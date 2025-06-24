@@ -37,26 +37,26 @@ def main():
     ]
     df_display = df.reset_index(drop=True)[cols_to_show]
 
-    # Exibe o DataFrame com seleção de linha (Streamlit >=1.35)
+    # Exibe o DataFrame com seleção de linha
     st.markdown("Selecione um registro na tabela abaixo:")
-    event = st.dataframe(
+    event = st.experimental_data_editor(
         df_display,
         use_container_width=True,
         hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row"
+        row_selectable="single"
     )
 
-    # Botão para exibir detalhes
-    st.markdown("---")
+    # Botão para abrir modal de detalhes
     if st.button("Exibir detalhes do registro selecionado"):
-        selected_rows = event.selection.rows
+        selected_rows = event.selection if hasattr(event, 'selection') else event.row_select
         if selected_rows:
             sel_idx = selected_rows[0]
             detalhes = df.loc[sel_idx]
-            st.subheader("Detalhes do Registro")
-            for col, val in detalhes.items():
-                st.write(f"- **{col}**: {val}")
+            # Exibe detalhes em um modal
+            with st.modal("Detalhes do Registro"):
+                st.subheader(f"Registro #{sel_idx}")
+                for col, val in detalhes.items():
+                    st.write(f"- **{col}**: {val}")
         else:
             st.warning("Nenhum registro foi selecionado. Por favor, selecione uma linha na tabela.")
 
