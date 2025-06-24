@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
 
+# Se você ainda não instalou streamlit-aggrid, adicione ao seu requirements.txt:
+# streamlit-aggrid
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+
 # Configuração da página do Streamlit
 def setup_page():
     st.set_page_config(
@@ -10,45 +14,55 @@ def setup_page():
         initial_sidebar_state="expanded"
     )
 
-# Função para carregar e armazenar em cache o DataFrame
-@st.cache_data  # use @st.cache se sua versão do Streamlit for anterior à 1.18
+@st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     """
-    Lê o arquivo CSV e retorna um DataFrame pandas.
+    Carrega o CSV e retorna o DataFrame.
     """
     return pd.read_csv(path)
 
-# Função principal do app
 def main():
     setup_page()
     st.title("Aplicativo Inicial em Streamlit")
-    st.markdown("Veja abaixo os dados carregados do arquivo CSV:")
+    st.markdown("**Visualização do DataFrame com seleção de linha**")
 
-    # Carrega e prepara o DataFrame
+    # Carrega dados
     df = load_data("dados_finais_com_resumo_llm.csv")
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
-    cols_to_show = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
-    df_display = df.reset_index(drop=False)[cols_to_show + ['index']]
+    cols = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
+    df_display = df.reset_index(drop=False)[cols + ['index']]
 
-    # Exibe o DataFrame sem índice
-    st.dataframe(df_display.drop(columns=['index']), hide_index=True)
+    # Configura AgGrid para seleção
+    gb = GridOptionsBuilder.from_dataframe(df_display[cols])
+    gb.configure_selection(selection_mode="single", use_checkbox=True)
+    grid_opts = gb.build()
 
-    # Selecione o registro via selectbox para modal
-    registro_map = {row['index']: f"{row['Autor']} - {row['Título']}" for _, row in df_display.iterrows()}
-    selected_idx = st.selectbox(
-        "Selecione o registro para detalhes:",
-        options=list(registro_map.keys()),
-        format_func=lambda x: registro_map[x]
+    # Exibe grid
+    grid_response = AgGrid(
+        df_display[cols],
+        gridOptions=grid_opts,
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        enable_enterprise_modules=False,
+        fit_columns_on_grid_load=True
     )
+    selected = grid_response.get("selected_rows")
 
-    # Botão para abrir modal com detalhes
+    # Botão para detalhes
+    st.markdown("---")
     if st.button("Exibir detalhes do registro selecionado"):
-        detalhes = df.loc[selected_idx]
-        # Exibe detalhes em modal nativo do Streamlit
-        with st.modal(f"Detalhes do Registro #{selected_idx}"):
-            st.subheader(f"Detalhes do Registro #{selected_idx}")
-            for col, val in detalhes.items():
-                st.write(f"- **{col}**: {val}")
+        if selected:
+            # O AgGrid retorna um dict dos dados da linha selecionada
+            sel_data = selected[0]
+            # Recupera índice original
+            sel_idx = sel_data.get('index')
+            detalhes = df.loc[sel_idx]
+
+            with st.modal(f"Detalhes do Registro #{sel_idx}"):
+                st.subheader(f"Registro #{sel_idx}")
+                for col, val in detalhes.items():
+                    st.write(f"- **{col}**: {val}")
+        else:
+            st.warning("Nenhum registro selecionado. Marque a checkbox da linha desejada.")
 
 if __name__ == "__main__":
     main()
