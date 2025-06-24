@@ -37,8 +37,16 @@ def main():
 
     # Renomeia a coluna
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
-    # Reorganiza e seleciona apenas as colunas desejadas
-    cols_to_show = ["Tipo de Documento", "Ano", "Assuntos", "Orientador"]
+
+    # Define e reordena as colunas a exibir
+    cols_to_show = [
+        "Tipo de Documento",  # coluna principal
+        "Autor",             # adicionar Autor
+        "Título",            # adicionar Título
+        "Ano",
+        "Assuntos",
+        "Orientador"
+    ]
     df_display = df.reset_index(drop=True)[cols_to_show]
 
     # Exibe o DataFrame sem índice e com colunas filtradas
