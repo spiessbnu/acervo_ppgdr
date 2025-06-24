@@ -47,18 +47,18 @@ def main():
         selection_mode="single-row"
     )
 
-    # Área de detalhes
+    # Botão para exibir detalhes
     st.markdown("---")
-    st.subheader("Detalhes do Registro Selecionado")
-    selected_rows = event.selection.rows
-    if selected_rows:
-        sel_idx = selected_rows[0]
-        detalhes = df.loc[sel_idx]
-        st.markdown("**Informações completas do registro:**")
-        for col, val in detalhes.items():
-            st.write(f"- **{col}**: {val}")
-    else:
-        st.info("Nenhum registro selecionado.")
+    if st.button("Exibir detalhes do registro selecionado"):
+        selected_rows = event.selection.rows
+        if selected_rows:
+            sel_idx = selected_rows[0]
+            detalhes = df.loc[sel_idx]
+            st.subheader("Detalhes do Registro")
+            for col, val in detalhes.items():
+                st.write(f"- **{col}**: {val}")
+        else:
+            st.warning("Nenhum registro foi selecionado. Por favor, selecione uma linha na tabela.")
 
 if __name__ == "__main__":
     main()
