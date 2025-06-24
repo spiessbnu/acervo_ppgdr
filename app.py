@@ -51,7 +51,7 @@ def main():
         update_mode=GridUpdateMode.SELECTION_CHANGED,
         enable_enterprise_modules=False,
         fit_columns_on_grid_load=True,
-        key='data_grid' # Adicionar uma chave é uma boa prática
+        key='data_grid'
     )
 
     st.markdown("---")
@@ -59,14 +59,15 @@ def main():
     # Lógica para exibir os detalhes sem precisar de um botão
     selected_rows = grid_response.get("selected_rows")
     
-    if selected_rows:
+    # CORREÇÃO 1: Verificar se o DataFrame de seleção não está vazio
+    if not selected_rows.empty:
         st.subheader("Detalhes do Registro Selecionado")
         
-        # O AgGrid retorna uma lista de dicionários
-        selected_data = selected_rows[0]
+        # CORREÇÃO 2: Acessar a primeira linha do DataFrame com .iloc[0]
+        selected_data_row = selected_rows.iloc[0]
         
         # Recupera o índice original que foi adicionado ao DataFrame
-        original_index = selected_data.get('index_original')
+        original_index = selected_data_row.get('index_original')
 
         # Verifica se o índice foi encontrado antes de tentar acessar os dados
         if original_index is not None:
