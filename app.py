@@ -163,23 +163,18 @@ def load_embeddings():
 
 @st.cache_resource
 def init_openai_client():
-    """Inicializa o cliente OpenAI"""
+    """Inicializa o cliente OpenAI a partir de st.secrets."""
     try:
-        # Tenta carregar a chave da API dos secrets do Streamlit
-        if "openai_api_key" in st.secrets:
-            client = OpenAI(api_key=st.secrets["openai_api_key"])
-            # Teste simples para verificar se a chave funciona
-            try:
-                client.models.list()
-                return client
-            except Exception as e:
-                st.error(f"❌ Chave da API OpenAI inválida: {str(e)}")
-                return None
-        else:
-            st.warning("⚠️ Chave da API OpenAI não configurada. Funcionalidades avançadas não estarão disponíveis.")
+        key = st.secrets.get("openai_api_key", "").strip()
+        if not key:
+            st.warning("⚠️ OpenAI API key não configurada em st.secrets.")
             return None
+        client = OpenAI(api_key=key)
+        # Optional: testar conexão — mas cuidado com rate limits
+        # client.models.list()
+        return client
     except Exception as e:
-        st.error(f"❌ Erro ao inicializar cliente OpenAI: {str(e)}")
+        st.error(f"❌ Erro ao inicializar cliente OpenAI: {e}")
         return None
 
 def safe_literal_eval(s):
