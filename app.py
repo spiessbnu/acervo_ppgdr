@@ -49,19 +49,24 @@ def main():
     ]
     df_display = df.reset_index(drop=True)[cols_to_show]
 
-    # Exibe o DataFrame com seleção de linha usando st.data_editor
+    # Exibe o DataFrame com seleção de linha
     st.markdown("Selecione um registro diretamente na tabela abaixo:")
+    selected = None
+    # Tenta usar o novo data_editor
     try:
         selected = st.data_editor(
             df_display,
             use_container_width=True,
+            hide_index=True,
             row_selection="single"
         )
-    except AttributeError:
-        # Fallback para versões anteriores do Streamlit
+    except Exception as e:
+        st.warning(f"Data editor não disponível ou falhou: {e}")
+        # Fallback para versões anteriores
         selected = st.experimental_data_editor(
             df_display,
             use_container_width=True,
+            hide_index=True,
             row_selectable="single"
         )
 
@@ -69,7 +74,7 @@ def main():
     st.markdown("---")
     st.subheader("Detalhes do Registro Selecionado")
 
-    if not selected.empty:
+    if selected is not None and not selected.empty:
         sel_idx = selected.index[0]
         detalhes = df.reset_index(drop=True).loc[sel_idx]
 
