@@ -1,4 +1,5 @@
 streamlit==1.46.0
+streamlit-aggrid
 pandas==2.2.3
 plotly==5.24.1
 scikit-learn==1.7.0
