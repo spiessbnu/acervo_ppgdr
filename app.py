@@ -52,5 +52,28 @@ def main():
     # Exibe o DataFrame sem índice e com colunas filtradas
     st.dataframe(df_display)
 
+    # Área de detalhes abaixo do DataFrame
+    st.markdown("---")
+    st.subheader("Detalhes do Registro Selecionado")
+
+    # Seleção do registro (exibe Autor - Título)
+    options = {
+        idx: f"{row['Autor']} - {row['Título']}"
+        for idx, row in df_display.iterrows()
+    }
+    selected_idx = st.selectbox(
+        "Selecione o registro:",
+        options=list(options.keys()),
+        format_func=lambda x: options[x]
+    )
+
+    # Botão para exibir detalhes
+    if st.button("Exibir detalhes"):
+        detalhes = df.reset_index(drop=True).loc[selected_idx]
+        # Exibe todas as colunas originais do registro selecionado
+        st.markdown("**Informações completas do registro:**")
+        for col, val in detalhes.items():
+            st.write(f"- **{col}**: {val}")
+
 if __name__ == "__main__":
     main()
