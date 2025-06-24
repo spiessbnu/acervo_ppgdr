@@ -10,7 +10,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Visualização de Dados do Acervo",
+        page_title="Visualização de Dados do Acervo v1",
         page_icon="📚",
         layout="wide",
         initial_sidebar_state="expanded"
