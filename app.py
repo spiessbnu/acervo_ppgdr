@@ -1,10 +1,6 @@
 import streamlit as st
 import pandas as pd
 
-# Se desejar usar um grid com seleção baseada em checkbox, instale o componente:
-# pip install streamlit-aggrid
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
-
 # Configuração da página do Streamlit
 def setup_page():
     st.set_page_config(
@@ -17,6 +13,9 @@ def setup_page():
 # Função para carregar e armazenar em cache o DataFrame
 @st.cache_data  # use @st.cache se sua versão do Streamlit for anterior à 1.18
 def load_data(path: str) -> pd.DataFrame:
+    """
+    Lê o arquivo CSV e retorna um DataFrame pandas.
+    """
     return pd.read_csv(path)
 
 # Função principal do app
@@ -29,34 +28,27 @@ def main():
     df = load_data("dados_finais_com_resumo_llm.csv")
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     cols_to_show = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
-    df_display = df.reset_index(drop=True)[cols_to_show]
+    df_display = df.reset_index(drop=False)[cols_to_show + ['index']]
 
-    # Exibe o grid com checkbox de seleção
-    st.markdown("Selecione um registro na tabela abaixo:")
-    gb = GridOptionsBuilder.from_dataframe(df_display)
-    gb.configure_selection(selection_mode="single", use_checkbox=True)
-    grid_opts = gb.build()
-    grid_resp = AgGrid(
-        df_display,
-        gridOptions=grid_opts,
-        enable_enterprise_modules=False,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
-        fit_columns_on_grid_load=True
+    # Exibe o DataFrame sem índice
+    st.dataframe(df_display.drop(columns=['index']), hide_index=True)
+
+    # Selecione o registro via selectbox para modal
+    registro_map = {row['index']: f"{row['Autor']} - {row['Título']}" for _, row in df_display.iterrows()}
+    selected_idx = st.selectbox(
+        "Selecione o registro para detalhes:",
+        options=list(registro_map.keys()),
+        format_func=lambda x: registro_map[x]
     )
-    selected = grid_resp.get("selected_rows", [])
 
-    # Botão para exibir detalhes em um expander (popup simplificado)
-    st.markdown("---")
+    # Botão para abrir modal com detalhes
     if st.button("Exibir detalhes do registro selecionado"):
-        if selected:
-            # Obtem o índice original via key '_selectedRowNodeInfo'
-            sel_idx = selected[0]["_selectedRowNodeInfo"]["nodeRowIndex"]
-            detalhes = df.loc[sel_idx]
-            with st.expander("Detalhes do Registro", expanded=True):
-                for col, val in detalhes.items():
-                    st.write(f"- **{col}**: {val}")
-        else:
-            st.warning("Nenhum registro selecionado. Por favor, marque a checkbox da linha desejada.")
+        detalhes = df.loc[selected_idx]
+        # Abre modal popup com informações completas
+        with st.modal(f"Detalhes do Registro #{selected_idx}"):
+            st.subheader(f"Detalhes do Registro #{selected_idx}")
+            for col, val in detalhes.items():
+                st.write(f"- **{col}**: {val}")
 
 if __name__ == "__main__":
     main()
