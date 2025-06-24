@@ -33,7 +33,7 @@ def main():
     st.markdown("Veja abaixo os dados carregados do arquivo CSV:")
 
     # Carrega os dados
-do arquivo = "dados_finais_com_resumo_llm.csv"
+    arquivo = "dados_finais_com_resumo_llm.csv"
     df = load_data(arquivo)
 
     # Exibe o DataFrame
