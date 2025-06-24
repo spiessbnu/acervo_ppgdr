@@ -1,61 +1,95 @@
+# --------------------------------------------------------------------------
+# BIBLIOTECAS NECESSÁRIAS
+# Certifique-se de que todas estão no seu arquivo requirements.txt ou
+# instaladas via pip: pip install streamlit pandas streamlit-aggrid
+# --------------------------------------------------------------------------
+import streamlit as st
+import pandas as pd
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+
+# --------------------------------------------------------------------------
+# FUNÇÃO 1: Configuração da página do Streamlit
+# Define o título, ícone e layout da página.
+# --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Visualização de Dados",
-        page_icon="📊",
+        page_title="Visualização de Dados do Acervo",
+        page_icon="📚",
         layout="wide",
         initial_sidebar_state="expanded"
     )
 
+# --------------------------------------------------------------------------
+# FUNÇÃO 2: Carregamento dos dados
+# Usa o cache do Streamlit para carregar o CSV apenas uma vez,
+# melhorando a performance.
+# --------------------------------------------------------------------------
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     """
-    Carrega o CSV e retorna o DataFrame.
+    Carrega o arquivo CSV e retorna um DataFrame do Pandas.
     """
-    return pd.read_csv(path)
+    try:
+        return pd.read_csv(path)
+    except FileNotFoundError:
+        st.error(f"Erro: O arquivo '{path}' não foi encontrado. Verifique o caminho e o nome do arquivo.")
+        return pd.DataFrame() # Retorna um DataFrame vazio para evitar outros erros
 
-
+# --------------------------------------------------------------------------
+# FUNÇÃO 3: Corpo principal do aplicativo
+# Onde toda a lógica de exibição acontece.
+# --------------------------------------------------------------------------
 def main():
+    # 1. Configura a página
     setup_page()
-    st.title("Aplicativo Inicial em Streamlit")
-    st.markdown("**Visualização do DataFrame com seleção de linha**")
+    st.title("Visualizador de Acervo Acadêmico")
+    st.markdown("Selecione uma linha na tabela abaixo para ver os detalhes completos do registro.")
 
-    # Carrega dados
+    # 2. Carrega os dados
     df = load_data("dados_finais_com_resumo_llm.csv")
+    
+    # Se o dataframe estiver vazio (devido a um erro de carregamento), interrompe a execução.
+    if df.empty:
+        return
+
+    # 3. Prepara o DataFrame para exibição
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
+    df['index_original'] = df.index  # Guarda o índice original para referência segura
     
-    df['index_original'] = df.index
-    
+    # Define as colunas que serão mostradas na tabela principal
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
     
+    # Cria o DataFrame para o AgGrid, garantindo que a coluna de índice esteja presente
     df_aggrid = df[cols_display + ['index_original']]
 
-    # Configura AgGrid
+    # 4. Configura a grade interativa (AgGrid)
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_selection(selection_mode="single", use_checkbox=True)
-    gb.configure_column("index_original", hide=True)
+    gb.configure_column("index_original", hide=True)  # Oculta a coluna de índice da visão do usuário
     grid_opts = gb.build()
 
-    # Exibe grid
+    # 5. Exibe a grade na tela
     grid_response = AgGrid(
         df_aggrid,
         gridOptions=grid_opts,
         update_mode=GridUpdateMode.SELECTION_CHANGED,
         enable_enterprise_modules=False,
         fit_columns_on_grid_load=True,
-        key='data_grid'
+        key='data_grid'  # Chave única para o componente
     )
 
-    st.markdown("---")
-    
+    st.markdown("---") # Linha divisória
+
+    # 6. Lógica para exibir os detalhes da linha selecionada
     selected_rows = grid_response.get("selected_rows")
     
     if not selected_rows.empty:
-        # Recupera a linha de dados completa do dataframe original
+        # Recupera a linha de dados completa do DataFrame original
         selected_data_row = selected_rows.iloc[0]
         original_index = selected_data_row.get('index_original')
         detalhes = df.loc[original_index]
 
-        # --- INÍCIO DA NOVA SEÇÃO DE LAYOUT ---
+        # --- Início da Seção de Layout dos Detalhes ---
 
         st.subheader(detalhes.get('Título', 'Título não disponível'))
 
@@ -87,11 +121,15 @@ def main():
         else:
             st.warning("Nenhum link para download disponível.")
 
-        # --- FIM DA NOVA SEÇÃO DE LAYOUT ---
+        # --- Fim da Seção de Layout dos Detalhes ---
             
     else:
         st.info("Selecione um registro na tabela acima para ver os detalhes.")
 
 
+# --------------------------------------------------------------------------
+# Ponto de entrada do script
+# Garante que a função main() seja executada quando o script é chamado.
+# --------------------------------------------------------------------------
 if __name__ == "__main__":
     main()
