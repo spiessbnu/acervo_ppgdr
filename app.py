@@ -49,25 +49,30 @@ def main():
     ]
     df_display = df.reset_index(drop=True)[cols_to_show]
 
-    # Exibe o DataFrame com seleção de linha
+    # Exibe o DataFrame com seleção de linha usando st.data_editor
     st.markdown("Selecione um registro diretamente na tabela abaixo:")
-    selected = st.experimental_data_editor(
-        df_display,
-        num_rows="dynamic",
-        use_container_width=True,
-        row_selectable="single"
-    )
+    try:
+        selected = st.data_editor(
+            df_display,
+            use_container_width=True,
+            row_selection="single"
+        )
+    except AttributeError:
+        # Fallback para versões anteriores do Streamlit
+        selected = st.experimental_data_editor(
+            df_display,
+            use_container_width=True,
+            row_selectable="single"
+        )
 
     # Detalhes do registro selecionado
     st.markdown("---")
     st.subheader("Detalhes do Registro Selecionado")
 
     if not selected.empty:
-        # Obtém o índice do registro selecionado
         sel_idx = selected.index[0]
         detalhes = df.reset_index(drop=True).loc[sel_idx]
 
-        # Exibe todas as colunas originais do registro selecionado
         st.markdown("**Informações completas do registro:**")
         for col, val in detalhes.items():
             st.write(f"- **{col}**: {val}")
