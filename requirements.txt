@@ -5,4 +5,4 @@ scikit-learn==1.7.0
 nltk==3.9.1
 networkx==3.5
 numpy==1.26.4
-
+openai==1.54.3
