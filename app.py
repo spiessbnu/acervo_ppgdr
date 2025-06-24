@@ -44,7 +44,7 @@ def main():
     # Botão para abrir modal com detalhes
     if st.button("Exibir detalhes do registro selecionado"):
         detalhes = df.loc[selected_idx]
-        # Abre modal popup com informações completas
+        # Exibe detalhes em modal nativo do Streamlit
         with st.modal(f"Detalhes do Registro #{selected_idx}"):
             st.subheader(f"Detalhes do Registro #{selected_idx}")
             for col, val in detalhes.items():
