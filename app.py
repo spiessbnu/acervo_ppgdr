@@ -333,6 +333,7 @@ def calcular_matriz_similaridade(df, embeddings=None):
     matriz_similaridade = cosine_similarity(tfidf_matrix)
     return matriz_similaridade
 
+        
 def criar_rede_similaridade(df, embeddings=None, threshold=0.3, max_nodes=20):
     """Cria visualização de rede de similaridade usando Plotly"""
     
@@ -481,5 +482,766 @@ def criar_rede_similaridade(df, embeddings=None, threshold=0.3, max_nodes=20):
             margin=dict(b=20, l=5, r=5, t=60),
             annotations=[
                 dict(
-          
-(Content truncated due to size limit. Use line ranges to read in chunks)
+                    text=f"Nós azuis: Dissertações | Nós azul escuro: Teses<br>"
+                         f"Conexões indicam similaridade > {threshold}<br>"
+                         f"Tamanho do nó = número de conexões",
+                    showarrow=False,
+                    xref="paper", yref="paper",
+                    x=0.005, y=-0.002,
+                    xanchor='left', yanchor='bottom',
+                    font=dict(size=10, color='#666')
+                )
+            ],
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            plot_bgcolor='white',
+            paper_bgcolor='white'
+        )
+    )
+    
+    return fig, G
+
+# Inicialização do NLTK
+@st.cache_resource
+def init_nltk():
+    """Inicializa recursos do NLTK"""
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except LookupError:
+        nltk.download('punkt')
+    
+    try:
+        nltk.data.find('corpora/stopwords')
+    except LookupError:
+        nltk.download('stopwords')
+    
+    try:
+        nltk.data.find('corpora/rslp')
+    except LookupError:
+        nltk.download('rslp')
+
+# Função principal
+def main():
+    # Inicializar NLTK
+    init_nltk()
+    
+    # Título principal
+    st.markdown('<h1 class="header-title">📚 Acervo PPGDR v1</h1>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align: center; color: #666; font-size: 1.2rem;">Plataforma de Consulta do Acervo de Teses e Dissertações do PPGDR-FURB</p>', unsafe_allow_html=True)
+    
+    # Carregar dados
+    df = load_data()
+    embeddings = load_embeddings()
+    client = init_openai_client()
+    
+    if df.empty:
+        st.warning("Nenhum dado foi carregado. Por favor, verifique se o arquivo CSV está disponível.")
+        return
+    
+    # Preparar dados
+    if 'Assuntos_Processados' not in df.columns:
+        df['Assuntos_Processados'] = df['Assuntos_Lista'].apply(safe_literal_eval)
+    
+    # Status dos embeddings e API
+    if embeddings is not None:
+        st.sidebar.markdown(f'<span class="embedding-badge">✅ Embeddings Ativos</span>', unsafe_allow_html=True)
+        st.sidebar.markdown(f"Dimensão: {embeddings.shape}")
+    else:
+        st.sidebar.markdown("⚠️ Embeddings não disponíveis")
+    
+    if client is not None:
+        st.sidebar.markdown(f'<span class="api-badge">✅ API OpenAI Ativa</span>', unsafe_allow_html=True)
+    else:
+        st.sidebar.markdown("⚠️ API OpenAI não configurada")
+    
+    # Sidebar para navegação
+    st.sidebar.markdown('<h2 style="color: #0F5EDD;">🔍 Navegação</h2>', unsafe_allow_html=True)
+    
+    # Opções de navegação
+    opcoes = ["🏠 Página Principal", "📊 Dashboard", "🕸️ Rede de Similaridade"]
+    escolha = st.sidebar.selectbox("Selecione uma opção:", opcoes)
+    
+    if escolha == "🏠 Página Principal":
+        pagina_principal(df, embeddings, client)
+    elif escolha == "📊 Dashboard":
+        dashboard(df)
+    elif escolha == "🕸️ Rede de Similaridade":
+        pagina_rede_similaridade(df, embeddings, client)
+
+def pagina_principal(df, embeddings, client):
+    """Página principal com busca e visualização dos dados"""
+    
+    # Métricas gerais
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("""
+        <div class="metric-card">
+            <h3 style="color: #0F5EDD; margin: 0;">Total de Trabalhos</h3>
+            <h2 style="margin: 0;">{}</h2>
+        </div>
+        """.format(len(df)), unsafe_allow_html=True)
+    
+    with col2:
+        dissertacoes = len(df[df['Tipo_Documento'] == 'Dissertação'])
+        st.markdown("""
+        <div class="metric-card">
+            <h3 style="color: #0F5EDD; margin: 0;">Dissertações</h3>
+            <h2 style="margin: 0;">{}</h2>
+        </div>
+        """.format(dissertacoes), unsafe_allow_html=True)
+    
+    with col3:
+        teses = len(df[df['Tipo_Documento'] == 'Tese'])
+        st.markdown("""
+        <div class="metric-card">
+            <h3 style="color: #0F5EDD; margin: 0;">Teses</h3>
+            <h2 style="margin: 0;">{}</h2>
+        </div>
+        """.format(teses), unsafe_allow_html=True)
+    
+    with col4:
+        anos = df['Ano'].nunique()
+        st.markdown("""
+        <div class="metric-card">
+            <h3 style="color: #0F5EDD; margin: 0;">Anos de Produção</h3>
+            <h2 style="margin: 0;">{}</h2>
+        </div>
+        """.format(anos), unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Seção de busca
+    st.markdown('<h2 class="section-header">🔍 Busca no Acervo</h2>', unsafe_allow_html=True)
+    
+    # Abas para diferentes tipos de busca
+    if embeddings is not None and client is not None:
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📋 Busca por Assunto", 
+            "🔤 Busca por Palavras-chave", 
+            "🧠 Busca Semântica (TF-IDF)", 
+            "🚀 Busca Semântica OpenAI"
+        ])
+        
+        with tab4:
+            busca_semantica_openai(df, embeddings, client)
+    elif embeddings is not None:
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📋 Busca por Assunto", 
+            "🔤 Busca por Palavras-chave", 
+            "🧠 Busca Semântica (TF-IDF)", 
+            "🚀 Busca Semântica Avançada"
+        ])
+        
+        with tab4:
+            busca_semantica_avancada(df, embeddings)
+    else:
+        tab1, tab2, tab3 = st.tabs([
+            "📋 Busca por Assunto", 
+            "🔤 Busca por Palavras-chave", 
+            "🧠 Busca Semântica"
+        ])
+    
+    with tab1:
+        busca_por_assunto(df)
+    
+    with tab2:
+        busca_por_palavras_chave(df)
+    
+    with tab3:
+        busca_semantica(df)
+    
+    st.markdown("---")
+    
+    # Exibição do dataframe completo
+    st.markdown('<h2 class="section-header">📊 Dados Gerais do Acervo</h2>', unsafe_allow_html=True)
+    
+    # Filtros para o dataframe
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        tipos_selecionados = st.multiselect(
+            "Filtrar por Tipo de Documento:",
+            options=df['Tipo_Documento'].unique(),
+            default=df['Tipo_Documento'].unique()
+        )
+    
+    with col2:
+        anos_selecionados = st.multiselect(
+            "Filtrar por Ano:",
+            options=sorted(df['Ano'].unique()),
+            default=sorted(df['Ano'].unique())
+        )
+    
+    with col3:
+        orientadores_selecionados = st.multiselect(
+            "Filtrar por Orientador:",
+            options=sorted(df['Orientador'].unique()) if 'Orientador' in df.columns else [],
+            default=sorted(df['Orientador'].unique()) if 'Orientador' in df.columns else []
+        )
+    
+    # Aplicar filtros
+    df_filtrado = df[
+        (df['Tipo_Documento'].isin(tipos_selecionados)) &
+        (df['Ano'].isin(anos_selecionados))
+    ]
+    
+    if 'Orientador' in df.columns and orientadores_selecionados:
+        df_filtrado = df_filtrado[df_filtrado['Orientador'].isin(orientadores_selecionados)]
+    
+    # Exibir dataframe filtrado
+    st.dataframe(
+        df_filtrado[['Autor', 'Título', 'Ano', 'Tipo_Documento', 'Orientador'] if 'Orientador' in df.columns else ['Autor', 'Título', 'Ano', 'Tipo_Documento']],
+        use_container_width=True,
+        height=400
+    )
+    
+    # Detalhes expandíveis para cada registro
+    if not df_filtrado.empty:
+        st.markdown('<h3 class="section-header">📖 Detalhes dos Trabalhos</h3>', unsafe_allow_html=True)
+        
+        for idx, row in df_filtrado.iterrows():
+            with st.expander(f"+ Detalhes: {row['Título'][:100]}..."):
+                exibir_detalhes_trabalho(row, df, embeddings)
+
+def busca_por_assunto(df):
+    """Implementa a busca por assunto usando dropdown"""
+    
+    # Gerar lista de assuntos únicos e ordenados
+    todos_assuntos = [assunto for sublista in df['Assuntos_Processados'] for assunto in sublista]
+    lista_unica = list(set(todos_assuntos))
+    lista_ordenada = sorted(lista_unica, key=lambda texto: remover_acentos(texto.lower()))
+    
+    # Dropdown para seleção de assunto
+    assunto_selecionado = st.selectbox(
+        "Selecione um assunto:",
+        options=['-- Selecione um Assunto --'] + lista_ordenada,
+        key="busca_assunto"
+    )
+    
+    if assunto_selecionado != '-- Selecione um Assunto --':
+        # Filtrar dataframe pelo assunto selecionado
+        filtro_booleano = df['Assuntos_Processados'].apply(lambda lista: assunto_selecionado in lista)
+        df_filtrado = df[filtro_booleano]
+        
+        if not df_filtrado.empty:
+            st.success(f"Encontrados {len(df_filtrado)} trabalho(s) para o assunto: '{assunto_selecionado}'")
+            
+            # Exibir resultados
+            for idx, row in df_filtrado.iterrows():
+                with st.expander(f"📄 {row['Título']}"):
+                    exibir_detalhes_trabalho(row, df)
+        else:
+            st.warning("Nenhum trabalho encontrado para o assunto selecionado.")
+
+def busca_por_palavras_chave(df):
+    """Implementa a busca por palavras-chave"""
+    
+    # Campo de entrada para palavras-chave
+    palavras_chave = st.text_input(
+        "Digite palavras-chave para busca:",
+        placeholder="Ex: desenvolvimento regional, sustentabilidade, economia",
+        key="busca_palavras"
+    )
+    
+    if palavras_chave:
+        # Buscar nos títulos e resumos
+        palavras_normalizadas = normalizar_string(palavras_chave)
+        
+        # Filtrar por título
+        filtro_titulo = df['Título'].apply(
+            lambda x: any(palavra in normalizar_string(str(x)) for palavra in palavras_normalizadas.split())
+        )
+        
+        # Filtrar por resumo LLM
+        filtro_resumo = pd.Series([False] * len(df))
+        if 'Resumo_LLM' in df.columns:
+            filtro_resumo = df['Resumo_LLM'].apply(
+                lambda x: any(palavra in normalizar_string(str(x)) for palavra in palavras_normalizadas.split())
+            )
+        
+        # Combinar filtros
+        df_filtrado = df[filtro_titulo | filtro_resumo]
+        
+        if not df_filtrado.empty:
+            st.success(f"Encontrados {len(df_filtrado)} trabalho(s) para as palavras-chave: '{palavras_chave}'")
+            
+            # Exibir resultados
+            for idx, row in df_filtrado.iterrows():
+                with st.expander(f"📄 {row['Título']}"):
+                    exibir_detalhes_trabalho(row, df)
+        else:
+            st.warning("Nenhum trabalho encontrado para as palavras-chave especificadas.")
+
+@st.cache_resource
+def preparar_busca_semantica(df):
+    """Prepara os dados para busca semântica"""
+    
+    # Combinar título e resumo LLM para busca semântica
+    textos_combinados = []
+    for idx, row in df.iterrows():
+        texto = str(row['Título'])
+        if 'Resumo_LLM' in df.columns and pd.notna(row['Resumo_LLM']):
+            texto += " " + str(row['Resumo_LLM'])
+        textos_combinados.append(texto)
+    
+    # Preprocessar textos
+    textos_processados = [preprocessar_texto(texto) for texto in textos_combinados]
+    
+    # Criar matriz TF-IDF
+    vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1, 2))
+    tfidf_matrix = vectorizer.fit_transform(textos_processados)
+    
+    return vectorizer, tfidf_matrix, textos_processados
+
+def busca_semantica(df):
+    """Implementa a busca semântica usando TF-IDF e similaridade de cosseno"""
+    
+    # Campo de entrada para busca semântica
+    query_semantica = st.text_input(
+        "Digite sua consulta para busca semântica:",
+        placeholder="Ex: impactos ambientais do desenvolvimento urbano",
+        key="busca_semantica"
+    )
+    
+    if query_semantica:
+        try:
+            # Preparar dados para busca semântica
+            vectorizer, tfidf_matrix, textos_processados = preparar_busca_semantica(df)
+            
+            # Realizar busca
+            resultados = buscar_e_rankear(query_semantica, False, vectorizer, tfidf_matrix)
+            
+            if resultados:
+                st.success(f"Encontrados {len(resultados)} trabalho(s) relevantes para: '{query_semantica}'")
+                
+                # Exibir resultados ordenados por relevância
+                for i, (idx, score) in enumerate(resultados[:10]):  # Top 10 resultados
+                    row = df.iloc[idx]
+                    with st.expander(f"📄 {row['Título']} (Relevância: {score:.3f})"):
+                        exibir_detalhes_trabalho(row, df)
+            else:
+                st.warning("Nenhum trabalho encontrado para a consulta especificada.")
+                
+        except Exception as e:
+            st.error(f"Erro na busca semântica: {str(e)}")
+
+def busca_semantica_avancada(df, embeddings):
+    """Implementa a busca semântica usando embeddings pré-calculados (sem API)"""
+    
+    st.info("🚀 **Busca Semântica Avançada** - Usando embeddings pré-calculados")
+    st.warning("⚠️ **Limitação**: Esta versão simula a busca semântica pois não há API OpenAI configurada.")
+    
+    # Campo de entrada para busca semântica avançada
+    query_avancada = st.text_input(
+        "Digite sua consulta para busca semântica avançada:",
+        placeholder="Ex: desenvolvimento sustentável na região sul do Brasil",
+        key="busca_semantica_avancada"
+    )
+    
+    if query_avancada:
+        try:
+            # Usar TF-IDF como simulação
+            vectorizer, tfidf_matrix, _ = preparar_busca_semantica(df)
+            resultados = buscar_e_rankear(query_avancada, False, vectorizer, tfidf_matrix)
+            
+            if resultados:
+                st.success(f"Encontrados {len(resultados)} trabalho(s) relevantes para: '{query_avancada}'")
+                
+                # Exibir resultados ordenados por relevância
+                for i, (idx, score) in enumerate(resultados[:10]):
+                    row = df.iloc[idx]
+                    
+                    # Criar card com score destacado
+                    col1, col2 = st.columns([4, 1])
+                    
+                    with col1:
+                        st.markdown(f"**{i+1}. {row['Título']}**")
+                        st.markdown(f"*{row['Autor']} ({row['Ano']})*")
+                    
+                    with col2:
+                        st.markdown(f'<span class="similarity-score">Similaridade: {score:.3f}</span>', 
+                                  unsafe_allow_html=True)
+                    
+                    # Resumo formatado
+                    if 'Resumo_LLM' in df.columns and pd.notna(row['Resumo_LLM']):
+                        resumo_formatado = textwrap.fill(str(row['Resumo_LLM']), width=100)
+                        st.markdown(f"**Resumo:** {resumo_formatado}")
+                    
+                    st.markdown("---")
+                    
+            else:
+                st.warning("Nenhum trabalho encontrado para a consulta especificada.")
+                
+        except Exception as e:
+            st.error(f"Erro na busca semântica avançada: {str(e)}")
+
+def busca_semantica_openai(df, embeddings, client):
+    """Implementa a busca semântica real usando API OpenAI"""
+    
+    st.info("🚀 **Busca Semântica OpenAI** - Usando API OpenAI para gerar embeddings da query em tempo real")
+    
+    # Campo de entrada para busca semântica OpenAI
+    query_openai = st.text_input(
+        "Digite sua consulta para busca semântica OpenAI:",
+        placeholder="Ex: desenvolvimento sustentável na região sul do Brasil",
+        key="busca_semantica_openai"
+    )
+    
+    if query_openai:
+        with st.spinner("Gerando embedding da query e calculando similaridades..."):
+            try:
+                # Realizar busca semântica real com API OpenAI
+                resultados = buscar_semantica_openai_real(query_openai, client, embeddings)
+                
+                if resultados:
+                    st.success(f"Encontrados {len(resultados)} trabalho(s) altamente relevantes para: '{query_openai}'")
+                    
+                    # Exibir resultados ordenados por relevância
+                    for i, (idx, score) in enumerate(resultados[:10]):
+                        row = df.iloc[idx]
+                        
+                        # Criar card com score destacado
+                        col1, col2 = st.columns([4, 1])
+                        
+                        with col1:
+                            st.markdown(f"**{i+1}. {row['Título']}**")
+                            st.markdown(f"*{row['Autor']} ({row['Ano']})*")
+                        
+                        with col2:
+                            st.markdown(f'<span class="similarity-score">Similaridade: {score:.3f}</span>', 
+                                      unsafe_allow_html=True)
+                        
+                        # Resumo formatado
+                        if 'Resumo_LLM' in df.columns and pd.notna(row['Resumo_LLM']):
+                            resumo_formatado = textwrap.fill(str(row['Resumo_LLM']), width=100)
+                            st.markdown(f"**Resumo:** {resumo_formatado}")
+                        
+                        st.markdown("---")
+                        
+                else:
+                    st.warning("Nenhum trabalho encontrado para a consulta especificada.")
+                    
+            except Exception as e:
+                st.error(f"Erro na busca semântica OpenAI: {str(e)}")
+
+def pagina_rede_similaridade(df, embeddings, client):
+    """Página da rede de similaridade com sumarização temática"""
+    
+    st.markdown('<h1 class="header-title">🕸️ Rede de Similaridade</h1>', unsafe_allow_html=True)
+    st.markdown("Visualização interativa das conexões entre trabalhos baseada em similaridade semântica.")
+    
+    # Controles da rede
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        threshold = st.slider(
+            "Threshold de Similaridade:",
+            min_value=0.1,
+            max_value=0.8,
+            value=0.3,
+            step=0.05,
+            help="Conexões só aparecem se a similaridade for maior que este valor"
+        )
+    
+    with col2:
+        max_nodes = st.slider(
+            "Máximo de Trabalhos:",
+            min_value=10,
+            max_value=50,
+            value=20,
+            step=5,
+            help="Número máximo de trabalhos a exibir na rede"
+        )
+    
+    with col3:
+        filtro_tipo = st.selectbox(
+            "Filtrar por Tipo:",
+            options=["Todos", "Dissertação", "Tese"],
+            help="Filtrar trabalhos por tipo de documento"
+        )
+    
+    # Aplicar filtro de tipo se necessário
+    df_filtrado = df.copy()
+    if filtro_tipo != "Todos":
+        df_filtrado = df_filtrado[df_filtrado['Tipo_Documento'] == filtro_tipo]
+    
+    if len(df_filtrado) < 2:
+        st.warning("Não há trabalhos suficientes para criar uma rede de similaridade.")
+        return
+    
+    # Gerar e exibir a rede
+    with st.spinner("Gerando rede de similaridade..."):
+        try:
+            fig, grafo = criar_rede_similaridade(df_filtrado, embeddings, threshold, max_nodes)
+            
+            if fig is not None and grafo is not None:
+                st.plotly_chart(fig, use_container_width=True, height=600)
+                
+                # Informações adicionais
+                st.markdown("### 📊 Informações da Rede")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Trabalhos Exibidos", min(max_nodes, len(df_filtrado)))
+                
+                with col2:
+                    # Calcular número de conexões
+                    conexoes = len(grafo.edges())
+                    st.metric("Conexões", conexoes)
+                
+                with col3:
+                    num_nodes = len(grafo.nodes())
+                    densidade = (2 * conexoes) / (num_nodes * (num_nodes - 1)) if num_nodes > 1 else 0
+                    st.metric("Densidade da Rede", f"{densidade:.2%}")
+                
+                # Sumarização Temática
+                if client is not None and len(grafo.nodes()) > 0:
+                    st.markdown("### 🤖 Sumarização Temática do Cluster")
+                    
+                    if st.button("🚀 Gerar Sumário Temático do Cluster", type="primary"):
+                        with st.spinner("Gerando sumário temático com OpenAI..."):
+                            try:
+                                # Preparar documentos do cluster
+                                documentos_cluster = []
+                                for node in grafo.nodes():
+                                    node_data = grafo.nodes[node]
+                                    idx_original = node_data['idx_original']
+                                    row = df_filtrado.iloc[idx_original]
+                                    documentos_cluster.append({
+                                        'Título': row['Título'],
+                                        'Resumo_LLM': row['Resumo_LLM'] if 'Resumo_LLM' in row else ''
+                                    })
+                                
+                                # Gerar sumário
+                                sumario = gerar_sumario_cluster(documentos_cluster, client)
+                                
+                                # Exibir sumário
+                                st.markdown(f"""
+                                <div class="summary-box">
+                                    <h4 style="color: #0F5EDD; margin-top: 0;">📋 Sumário Temático do Cluster</h4>
+                                    {sumario}
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # Informações do cluster
+                                st.markdown(f"""
+                                <div class="cluster-info">
+                                    <strong>Informações do Cluster:</strong><br>
+                                    • Número de trabalhos analisados: {len(documentos_cluster)}<br>
+                                    • Threshold de similaridade: {threshold}<br>
+                                    • Conexões na rede: {conexoes}<br>
+                                    • Modelo usado: GPT-4o-mini
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                            except Exception as e:
+                                st.error(f"Erro ao gerar sumário temático: {str(e)}")
+                else:
+                    if client is None:
+                        st.info("🔧 **Sumarização Temática**: Configure a API OpenAI para habilitar esta funcionalidade.")
+                    else:
+                        st.info("📊 Gere uma rede de similaridade para usar a sumarização temática.")
+                
+                # Explicação
+                st.markdown("""
+                ### 💡 Como Interpretar a Rede
+                
+                - **Nós (círculos)**: Cada nó representa um trabalho (tese ou dissertação)
+                - **Cores**: Azul claro = Dissertações, Azul escuro = Teses  
+                - **Conexões (linhas)**: Indicam alta similaridade semântica entre trabalhos
+                - **Tamanho dos nós**: Proporcional ao número de conexões (centralidade)
+                - **Posicionamento**: Trabalhos similares tendem a ficar próximos
+                - **Clusters**: Grupos de trabalhos conectados indicam temas relacionados
+                
+                ### 🤖 Sumarização Temática
+                
+                - **Funcionalidade**: Analisa todos os trabalhos da rede e gera um resumo temático
+                - **Tecnologia**: Usa GPT-4o-mini para identificar temas centrais e termos comuns
+                - **Resultado**: Síntese dos principais temas e palavras-chave do cluster
+                
+                **Dica**: Passe o mouse sobre os nós para ver detalhes dos trabalhos!
+                """)
+            
+        except Exception as e:
+            st.error(f"Erro ao gerar rede de similaridade: {str(e)}")
+
+def exibir_detalhes_trabalho(row, df_completo, embeddings=None):
+    """Exibe os detalhes de um trabalho específico"""
+    
+    # Informações básicas
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"**Autor:** {row['Autor']}")
+        st.markdown(f"**Ano:** {row['Ano']}")
+        st.markdown(f"**Tipo:** {row['Tipo_Documento']}")
+        if 'Orientador' in row:
+            st.markdown(f"**Orientador:** {row['Orientador']}")
+    
+    with col2:
+        if 'Assuntos_Lista' in row:
+            st.markdown("**Assuntos:**")
+            assuntos = safe_literal_eval(row['Assuntos_Lista'])
+            for assunto in assuntos[:5]:  # Mostrar apenas os primeiros 5
+                st.markdown(f"• {assunto}")
+    
+    # Resumo LLM
+    if 'Resumo_LLM' in row and pd.notna(row['Resumo_LLM']):
+        st.markdown("**Resumo:**")
+        st.markdown(f'<div class="expandable-content">{row["Resumo_LLM"]}</div>', unsafe_allow_html=True)
+    
+    # Trabalhos similares
+    if embeddings is not None:
+        st.markdown("**Trabalhos Similares:**")
+        try:
+            # Encontrar índice do trabalho atual
+            idx_atual = df_completo.index[df_completo['Título'] == row['Título']].tolist()
+            if idx_atual:
+                idx_atual = idx_atual[0]
+                
+                # Calcular similaridade com todos os outros trabalhos
+                matriz_sim = calcular_matriz_similaridade(df_completo, embeddings)
+                similaridades = matriz_sim[idx_atual]
+                
+                # Encontrar os 3 mais similares (excluindo o próprio trabalho)
+                indices_similares = np.argsort(-similaridades)[1:4]  # Exclui o primeiro (próprio trabalho)
+                
+                for i, idx_similar in enumerate(indices_similares):
+                    if similaridades[idx_similar] > 0.3:  # Threshold mínimo
+                        trabalho_similar = df_completo.iloc[idx_similar]
+                        score = similaridades[idx_similar]
+                        st.markdown(f"• **{trabalho_similar['Título']}** (Similaridade: {score:.3f})")
+                        st.markdown(f"  *{trabalho_similar['Autor']} ({trabalho_similar['Ano']})*")
+        except Exception as e:
+            st.info(f"Análise de similaridade não disponível: {str(e)}")
+    else:
+        st.markdown("**Rede de Similaridade:**")
+        st.info("Funcionalidade de rede de similaridade estará disponível quando os embeddings forem carregados.")
+
+def dashboard(df):
+    """Página do dashboard com visualizações"""
+    
+    st.markdown('<h1 class="header-title">📊 Dashboard do Acervo</h1>', unsafe_allow_html=True)
+    
+    # Gráfico 1: Quantidade de trabalhos por tipo
+    st.markdown('<h2 class="section-header">📈 Distribuição por Tipo de Documento</h2>', unsafe_allow_html=True)
+    
+    contagem_docs = df['Tipo_Documento'].value_counts().reset_index()
+    contagem_docs.columns = ['Tipo_Documento', 'Quantidade']
+    
+    fig1 = px.bar(
+        contagem_docs,
+        x='Tipo_Documento',
+        y='Quantidade',
+        title='Quantidade de Trabalhos por Tipo de Documento',
+        text='Quantidade',
+        color='Tipo_Documento',
+        color_discrete_map={
+            'Dissertação': '#0F5EDD',
+            'Tese': '#0A4BC7'
+        }
+    )
+    
+    fig1.update_traces(textposition='outside', textfont_size=12)
+    fig1.update_layout(
+        showlegend=False,
+        title_x=0.5,
+        font=dict(family="Arial, sans-serif", size=12)
+    )
+    
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    # Gráfico 2: Top 20 assuntos mais frequentes
+    st.markdown('<h2 class="section-header">🏷️ Assuntos Mais Frequentes</h2>', unsafe_allow_html=True)
+    
+    todos_assuntos = [assunto for sublista in df['Assuntos_Processados'] for assunto in sublista]
+    contador_assuntos = Counter(todos_assuntos)
+    top_20_assuntos = contador_assuntos.most_common(20)
+    
+    df_top20 = pd.DataFrame(top_20_assuntos, columns=['Assunto', 'Quantidade'])
+    
+    fig2 = px.bar(
+        df_top20.sort_values(by='Quantidade', ascending=True),
+        x='Quantidade',
+        y='Assunto',
+        orientation='h',
+        title='Top 20 Assuntos Mais Frequentes nos Trabalhos',
+        text='Quantidade'
+    )
+    
+    fig2.update_traces(marker_color='#0F5EDD', textposition='outside')
+    fig2.update_layout(
+        yaxis=dict(tickmode='linear'),
+        xaxis_title="Número de Ocorrências",
+        yaxis_title=None,
+        margin=dict(l=150, r=20, t=50, b=50),
+        title_x=0.5
+    )
+    
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    # Gráfico 3: Produção anual
+    st.markdown('<h2 class="section-header">📅 Produção Anual</h2>', unsafe_allow_html=True)
+    
+    contagem_agrupada = df.groupby(['Ano', 'Tipo_Documento']).size().reset_index(name='Quantidade')
+    contagem_agrupada = contagem_agrupada.sort_values('Ano')
+    
+    fig3 = px.bar(
+        contagem_agrupada,
+        x='Ano',
+        y='Quantidade',
+        color='Tipo_Documento',
+        title='Produção Anual: Teses vs. Dissertações',
+        barmode='group',
+        color_discrete_map={
+            'Dissertação': '#0F5EDD',
+            'Tese': '#0A4BC7'
+        }
+    )
+    
+    fig3.update_layout(
+        title_x=0.5,
+        font=dict(family="Arial, sans-serif", size=12),
+        legend_title_text='Tipo de Documento'
+    )
+    
+    fig3.update_xaxes(type='category')
+    
+    st.plotly_chart(fig3, use_container_width=True)
+    
+    # Estatísticas adicionais
+    st.markdown('<h2 class="section-header">📊 Estatísticas Gerais</h2>', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div class="metric-card">
+            <h3 style="color: #0F5EDD; margin: 0;">Período de Produção</h3>
+            <h2 style="margin: 0;">{} - {}</h2>
+        </div>
+        """.format(df['Ano'].min(), df['Ano'].max()), unsafe_allow_html=True)
+    
+    with col2:
+        media_anual = len(df) / (df['Ano'].max() - df['Ano'].min() + 1)
+        st.markdown("""
+        <div class="metric-card">
+            <h3 style="color: #0F5EDD; margin: 0;">Média Anual</h3>
+            <h2 style="margin: 0;">{:.1f}</h2>
+        </div>
+        """.format(media_anual), unsafe_allow_html=True)
+    
+    with col3:
+        total_assuntos = len(set([assunto for sublista in df['Assuntos_Processados'] for assunto in sublista]))
+        st.markdown("""
+        <div class="metric-card">
+            <h3 style="color: #0F5EDD; margin: 0;">Assuntos Únicos</h3>
+            <h2 style="margin: 0;">{}</h2>
+        </div>
+        """.format(total_assuntos), unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
+
