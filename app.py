@@ -11,8 +11,7 @@ def setup_page():
     )
 
 # Função para carregar e armazenar em cache o DataFrame
-@st.cache_data
-# ou use @st.cache se sua versão do Streamlit for anterior à 1.18
+@st.cache_data  # use @st.cache se sua versão do Streamlit for anterior à 1.18
 def load_data(path: str) -> pd.DataFrame:
     """
     Lê o arquivo CSV e retorna um DataFrame pandas.
@@ -36,8 +35,14 @@ def main():
     arquivo = "dados_finais_com_resumo_llm.csv"
     df = load_data(arquivo)
 
-    # Exibe o DataFrame
-    st.dataframe(df)
+    # Renomeia a coluna
+    df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
+    # Reorganiza e seleciona apenas as colunas desejadas
+    cols_to_show = ["Tipo de Documento", "Ano", "Assuntos", "Orientador"]
+    df_display = df.reset_index(drop=True)[cols_to_show]
+
+    # Exibe o DataFrame sem índice e com colunas filtradas
+    st.dataframe(df_display)
 
 if __name__ == "__main__":
     main()
