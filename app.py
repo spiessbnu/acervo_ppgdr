@@ -1,8 +1,3 @@
-import streamlit as st
-import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
-
-# Configuração da página do Streamlit
 def setup_page():
     st.set_page_config(
         page_title="Visualização de Dados",
@@ -18,6 +13,7 @@ def load_data(path: str) -> pd.DataFrame:
     """
     return pd.read_csv(path)
 
+
 def main():
     setup_page()
     st.title("Aplicativo Inicial em Streamlit")
@@ -27,21 +23,16 @@ def main():
     df = load_data("dados_finais_com_resumo_llm.csv")
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     
-    # Adiciona o índice original do DataFrame como uma nova coluna para referência segura
     df['index_original'] = df.index
     
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
     
-    # O DataFrame enviado para o AgGrid deve conter a coluna de índice
     df_aggrid = df[cols_display + ['index_original']]
 
-    # Configura AgGrid para seleção
+    # Configura AgGrid
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_selection(selection_mode="single", use_checkbox=True)
-    
-    # Opcional: Oculta a coluna de índice na visualização da tabela
     gb.configure_column("index_original", hide=True)
-    
     grid_opts = gb.build()
 
     # Exibe grid
@@ -56,31 +47,47 @@ def main():
 
     st.markdown("---")
     
-    # Lógica para exibir os detalhes sem precisar de um botão
     selected_rows = grid_response.get("selected_rows")
     
-    # CORREÇÃO 1: Verificar se o DataFrame de seleção não está vazio
     if not selected_rows.empty:
-        st.subheader("Detalhes do Registro Selecionado")
-        
-        # CORREÇÃO 2: Acessar a primeira linha do DataFrame com .iloc[0]
+        # Recupera a linha de dados completa do dataframe original
         selected_data_row = selected_rows.iloc[0]
-        
-        # Recupera o índice original que foi adicionado ao DataFrame
         original_index = selected_data_row.get('index_original')
+        detalhes = df.loc[original_index]
 
-        # Verifica se o índice foi encontrado antes de tentar acessar os dados
-        if original_index is not None:
-            # Usa o índice para obter todos os detalhes do DataFrame original
-            detalhes = df.loc[original_index]
-            
-            # Exibe os detalhes em um formato limpo
-            for col, val in detalhes.items():
-                # Não exibe a coluna de índice que criamos
-                if col != 'index_original':
-                    st.write(f"**{col}:** {val}")
+        # --- INÍCIO DA NOVA SEÇÃO DE LAYOUT ---
+
+        st.subheader(detalhes.get('Título', 'Título não disponível'))
+
+        # Exibindo metadados principais em colunas para melhor organização
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**Autor:** {detalhes.get('Autor', 'N/A')}")
+            st.write(f"**Tipo:** {detalhes.get('Tipo de Documento', 'N/A')}")
+        with col2:
+            st.write(f"**Orientador:** {detalhes.get('Orientador', 'N/A')}")
+            st.write(f"**Ano:** {detalhes.get('Ano', 'N/A')}")
+
+        st.divider() # Adiciona uma linha divisória
+
+        # Seção de Assuntos
+        st.markdown("##### Assuntos")
+        st.write(detalhes.get('Assuntos', 'Nenhum assunto listado.'))
+        
+        # Seção de Resumo (usando um expander para não ocupar muito espaço)
+        with st.expander("**Ver Resumo**", expanded=True):
+            resumo = detalhes.get('Resumo_LLM', 'Resumo não disponível.')
+            st.write(resumo)
+
+        # Seção de Download (com um botão clicável)
+        st.markdown("##### Link para Download")
+        link_pdf = detalhes.get('Link_PDF')
+        if link_pdf and isinstance(link_pdf, str):
+            st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
         else:
-            st.error("Não foi possível encontrar o índice do registro selecionado.")
+            st.warning("Nenhum link para download disponível.")
+
+        # --- FIM DA NOVA SEÇÃO DE LAYOUT ---
             
     else:
         st.info("Selecione um registro na tabela acima para ver os detalhes.")
