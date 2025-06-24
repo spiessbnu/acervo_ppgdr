@@ -40,40 +40,39 @@ def main():
 
     # Define e reordena as colunas a exibir
     cols_to_show = [
-        "Tipo de Documento",  # coluna principal
-        "Autor",             # adicionar Autor
-        "Título",            # adicionar Título
+        "Tipo de Documento",
+        "Autor",
+        "Título",
         "Ano",
         "Assuntos",
         "Orientador"
     ]
     df_display = df.reset_index(drop=True)[cols_to_show]
 
-    # Exibe o DataFrame sem índice e com colunas filtradas
-    st.dataframe(df_display)
+    # Exibe o DataFrame com seleção de linha
+    st.markdown("Selecione um registro diretamente na tabela abaixo:")
+    selected = st.experimental_data_editor(
+        df_display,
+        num_rows="dynamic",
+        use_container_width=True,
+        row_selectable="single"
+    )
 
-    # Área de detalhes abaixo do DataFrame
+    # Detalhes do registro selecionado
     st.markdown("---")
     st.subheader("Detalhes do Registro Selecionado")
 
-    # Seleção do registro (exibe Autor - Título)
-    options = {
-        idx: f"{row['Autor']} - {row['Título']}"
-        for idx, row in df_display.iterrows()
-    }
-    selected_idx = st.selectbox(
-        "Selecione o registro:",
-        options=list(options.keys()),
-        format_func=lambda x: options[x]
-    )
+    if not selected.empty:
+        # Obtém o índice do registro selecionado
+        sel_idx = selected.index[0]
+        detalhes = df.reset_index(drop=True).loc[sel_idx]
 
-    # Botão para exibir detalhes
-    if st.button("Exibir detalhes"):
-        detalhes = df.reset_index(drop=True).loc[selected_idx]
         # Exibe todas as colunas originais do registro selecionado
         st.markdown("**Informações completas do registro:**")
         for col, val in detalhes.items():
             st.write(f"- **{col}**: {val}")
+    else:
+        st.info("Nenhum registro selecionado.")
 
 if __name__ == "__main__":
     main()
