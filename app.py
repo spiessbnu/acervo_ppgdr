@@ -1,30 +1,3 @@
-import streamlit as st
-import pandas as pd
-
-# Configuração da página do Streamlit
-def setup_page():
-    st.set_page_config(
-        page_title="Visualização de Dados",
-        page_icon="📊",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-
-# Função para carregar e armazenar em cache o DataFrame
-@st.cache_data  # use @st.cache se sua versão do Streamlit for anterior à 1.18
-def load_data(path: str) -> pd.DataFrame:
-    """
-    Lê o arquivo CSV e retorna um DataFrame pandas.
-
-    Parâmetros:
-    - path: caminho para o arquivo CSV
-
-    Retorna:
-    - pd.DataFrame com os dados carregados
-    """
-    df = pd.read_csv(path)
-    return df
-
 # Função principal do app
 def main():
     setup_page()
@@ -47,42 +20,42 @@ def main():
         "Assuntos",
         "Orientador"
     ]
-    df_display = df.reset_index(drop=True)[cols_to_show]
+    # Usamos .copy() para evitar SettingWithCopyWarning
+    df_display = df.reset_index(drop=True)[cols_to_show].copy()
 
-    # Exibe o DataFrame com seleção de linha
+    # Exibe o DataFrame com seleção de linha usando a abordagem moderna
     st.markdown("Selecione um registro diretamente na tabela abaixo:")
-    selected = None
-    # Tenta usar o novo data_editor
-    try:
-        selected = st.data_editor(
-            df_display,
-            use_container_width=True,
-            hide_index=True,
-            row_selection="single"
-        )
-    except Exception as e:
-        st.warning(f"Data editor não disponível ou falhou: {e}")
-        # Fallback para versões anteriores
-        selected = st.experimental_data_editor(
-            df_display,
-            use_container_width=True,
-            hide_index=True,
-            row_selectable="single"
-        )
+    
+    # st.dataframe agora suporta seleção e armazena o resultado em st.session_state
+    # O evento 'on_select' pode ser "rerun" (padrão) ou um callback.
+    # selection_mode pode ser "single-row", "multi-row", "single-column", ou "multi-column".
+    st.dataframe(
+        df_display,
+        use_container_width=True,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row"
+    )
 
     # Detalhes do registro selecionado
     st.markdown("---")
     st.subheader("Detalhes do Registro Selecionado")
 
-    if selected is not None and not selected.empty:
-        sel_idx = selected.index[0]
-        detalhes = df.reset_index(drop=True).loc[sel_idx]
+    # A seleção fica armazenada em st.session_state. "selection" é a chave padrão.
+    if "selection" in st.session_state and len(st.session_state.selection["rows"]) > 0:
+        # Pega o índice da linha selecionada no df_display
+        sel_idx = st.session_state.selection["rows"][0]
+        
+        # Usa esse índice para localizar os detalhes no DataFrame original (df)
+        detalhes = df.iloc[sel_idx]
 
         st.markdown("**Informações completas do registro:**")
         for col, val in detalhes.items():
+            # Trata valores NaN para melhor exibição
+            if pd.isna(val):
+                val = "Não informado"
             st.write(f"- **{col}**: {val}")
     else:
-        st.info("Nenhum registro selecionado.")
+        st.info("Nenhum registro selecionado. Clique em uma linha na tabela acima.")
 
-if __name__ == "__main__":
-    main()
+# Não se esqueça de manter o resto do seu código (imports, setup_page, load_data e o if __name__...)
