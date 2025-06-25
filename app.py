@@ -132,21 +132,46 @@ def compute_clusters(_embeddings, k):
 
 
 # --------------------------------------------------------------------------
-# FUNÇÕES DE IA E GRAFOS
+# FUNÇÃO DE IA PARA GERAR SÍNTESE (VERSÃO APRIMORADA)
 # --------------------------------------------------------------------------
 def get_ai_synthesis(summaries: str) -> str:
-    """Chama a API da OpenAI para gerar uma síntese analítica dos textos."""
+    """
+    Chama a API da OpenAI com um prompt aprimorado para gerar uma síntese analítica dos textos.
+    """
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         prompt_template = """
-        Você é um especialista em análise de conteúdo e síntese acadêmica...
+        Você é um especialista em análise de conteúdo e síntese acadêmica.
+        Sua missão é analisar o conjunto de resumos de trabalhos acadêmicos fornecido abaixo.
+        Leia todos os textos e identifique as conexões, os padrões e os temas centrais que os unem.
+        Não resuma cada trabalho individualmente. Em vez disso, crie uma análise unificada que revele o panorama geral da pesquisa.
+
+        CONTEXTO (Resumos a serem analisados):
+        ---
+        {summaries}
+        ---
+
+        Sua resposta deve seguir rigorosamente o seguinte formato, sem adicionar nenhuma introdução, saudação ou texto extra:
+
+        **Síntese Analítica:**
+        [Aqui, escreva um parágrafo denso e analítico que conecte as ideias principais dos textos. Destaque as convergências, possíveis divergências e a contribuição coletiva do conjunto para o campo de estudo.]
+
+        **Temas Principais:**
+        [Aqui, liste de 3 a 5 dos temas mais proeminentes e recorrentes encontrados nos textos, em formato de lista com marcadores. Seja conciso.]
         """
-        # (Implementação completa omitida para brevidade)
-        return "Síntese gerada pela IA."
+        prompt = prompt_template.format(summaries=summaries)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Você é um especialista em análise de conteúdo e síntese acadêmica. Responda em português do Brasil."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.6,
+        )
+        return response.choices[0].message.content
     except Exception as e:
         st.error(f"Ocorreu um erro ao chamar a API da OpenAI: {e}")
-        return "Falha ao gerar a análise."
-
+        return "Falha ao gerar a análise. Verifique a configuração da chave de API ou se o serviço está disponível."
 
 def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num_vizinhos):
     """Gera um grafo de similaridade e retorna a figura e os IDs dos nós."""
