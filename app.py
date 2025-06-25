@@ -258,10 +258,7 @@ def main():
     matriz_similaridade = calculate_similarity_matrix(embeddings)
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     df['index_original'] = df.index
-
-    #st.markdown("Use as ferramentas de busca e filtros para explorar o acervo.")
-    st.subheader("Ferramentas de Busca e Filtro")
-
+ 
     def clear_searches():
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
