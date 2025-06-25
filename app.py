@@ -78,22 +78,19 @@ def main():
         original_index = selected_data_row.get('index_original')
         detalhes = df.loc[original_index]
 
-        # --- INÍCIO DO LAYOUT SIMPLIFICADO ---
-        # Exibe apenas os 3 campos solicitados.
-
+        # --- INÍCIO DO LAYOUT AJUSTADO ---
+        
         st.subheader("Detalhes do Registro")
         st.markdown("---")
 
         # 1. Assuntos
         st.markdown("#### Assuntos")
         st.write(detalhes.get('Assuntos', 'Nenhum assunto listado.'))
-        st.markdown("<br>", unsafe_allow_html=True) # Adiciona espaço extra
 
         # 2. Resumo
         st.markdown("#### Resumo")
         resumo = detalhes.get('Resumo_LLM', 'Resumo não disponível.')
         st.write(resumo)
-        st.markdown("<br>", unsafe_allow_html=True) # Adiciona espaço extra
 
         # 3. Link para Download
         st.markdown("#### Link para Download")
@@ -103,14 +100,7 @@ def main():
         else:
             st.warning("Nenhum link para download disponível.")
 
-        # --- FIM DO LAYOUT SIMPLIFICADO ---
+        # --- FIM DO LAYOUT AJUSTADO ---
             
     else:
         st.info("Selecione um registro na tabela acima para ver os detalhes.")
-
-
-# --------------------------------------------------------------------------
-# Ponto de entrada do script
-# --------------------------------------------------------------------------
-if __name__ == "__main__":
-    main()
