@@ -248,17 +248,33 @@ def main():
     st.divider()
     selected_rows = grid_response.get("selected_rows")
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
+    
     with tab_detalhes:
         if selected_rows is not None and not selected_rows.empty:
+            # Busca os detalhes completos da linha selecionada no DataFrame original
             detalhes = df.loc[selected_rows.iloc[0]['index_original']]
-            st.markdown("#### Assuntos"); st.write(detalhes.get('Assuntos', 'N/A'))
-            st.markdown("#### Resumo"); st.write(detalhes.get('Resumo_LLM', 'N/A'))
+            
+            # AJUSTE: Exibe o Título em destaque no topo da aba
+            titulo = detalhes.get('Título', 'Título não disponível')
+            st.markdown(f"**{titulo}**")
+            st.divider()
+
+            # Conteúdo restante da aba
+            st.markdown("#### Assuntos")
+            st.write(detalhes.get('Assuntos', 'Nenhum assunto listado.'))
+
+            st.markdown("#### Resumo")
+            st.write(detalhes.get('Resumo_LLM', 'Resumo não disponível.'))
+            
             st.markdown("#### Link para Download")
             link_pdf = detalhes.get('Link_PDF')
-            if link_pdf and isinstance(link_pdf, str): st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
-            else: st.warning("Nenhum link para download disponível.")
+            if link_pdf and isinstance(link_pdf, str):
+                st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
+            else:
+                st.warning("Nenhum link para download disponível.")
         else:
             st.info("Selecione um registro na tabela para ver os detalhes.")
+            
     with tab_similares:
         if embeddings.size == 0 or matriz_similaridade.size == 0:
             st.warning("Não foi possível carregar os dados de similaridade.")
