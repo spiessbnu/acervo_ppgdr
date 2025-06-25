@@ -8,14 +8,15 @@ import numpy as np
 import networkx as nx
 import plotly.graph_objects as go
 from sklearn.metrics.pairwise import cosine_similarity
+import openai  # Nova biblioteca
 
 # --------------------------------------------------------------------------
 # FUNÇÃO 1: Configuração da página do Streamlit
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Visualização de Dados do Acervo v2",
-        page_icon="📚",
+        page_title="Visualizador de Acervo Acadêmico v3",
+        page_icon="🧠",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -49,10 +50,54 @@ def calculate_similarity_matrix(_embeddings: np.ndarray) -> np.ndarray:
     return np.array([])
 
 # --------------------------------------------------------------------------
+# FUNÇÃO DE IA PARA GERAR SÍNTESE
+# --------------------------------------------------------------------------
+def get_ai_synthesis(summaries: str) -> str:
+    """Chama a API da OpenAI para gerar uma síntese dos textos."""
+    try:
+        # Configura a chave da API a partir dos secrets do Streamlit
+        client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
+
+        prompt = f"""
+        Você é um assistente de pesquisa acadêmica altamente qualificado. Sua tarefa é analisar um conjunto de resumos de trabalhos acadêmicos e gerar uma análise concisa.
+
+        Com base nos seguintes resumos:
+        ---
+        {summaries}
+        ---
+
+        Por favor, gere uma resposta estritamente no seguinte formato:
+
+        **Síntese Temática:**
+        [Um parágrafo coeso que resume os principais temas, metodologias e conclusões encontrados no conjunto de textos.]
+
+        **Termos Comuns:**
+        - [Termo 1]
+        - [Termo 2]
+        - [Termo 3]
+        - [Termo 4]
+        - [Termo 5]
+        """
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Você é um assistente de pesquisa acadêmica."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.5,
+        )
+        return response.choices[0].message.content
+
+    except Exception as e:
+        st.error(f"Erro ao contatar a API de IA: {e}")
+        return "Não foi possível gerar a análise. Verifique a configuração da chave de API ou tente novamente."
+
+# --------------------------------------------------------------------------
 # FUNÇÃO PARA GERAR O GRAFO DE SIMILARIDADE
 # --------------------------------------------------------------------------
 def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num_vizinhos):
-    """Gera um grafo de similaridade interativo com Plotly."""
+    """Gera um grafo de similaridade e retorna a figura e os IDs dos nós."""
     
     nos_da_rede = {id_documento_inicial}
     vizinhos_l1 = np.argsort(matriz_similaridade[id_documento_inicial])[-num_vizinhos-1:-1][::-1]
@@ -115,22 +160,18 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
     node_trace.textposition = 'top center'
     node_trace.textfont = dict(size=9, color='#333')
 
-    # AJUSTE: A sintaxe do título do layout foi corrigida para a versão atual do Plotly.
     fig = go.Figure(data=[edge_trace, node_trace, edge_label_trace],
                  layout=go.Layout(
                     title={
                         'text': f'<br>Rede de Similaridade para: "{df.iloc[id_documento_inicial]["Título"][:60]}..."',
-                        'font': {
-                            'size': 16
-                        }
+                        'font': {'size': 16}
                     },
-                    showlegend=False,
-                    hovermode='closest',
-                    margin=dict(b=20,l=5,r=5,t=40),
+                    showlegend=False, hovermode='closest', margin=dict(b=20,l=5,r=5,t=40),
                     xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                     yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
                     )
-    return fig
+    # Retorna também os IDs dos nós para usar na chamada da IA
+    return fig, nos_da_rede
 
 # --------------------------------------------------------------------------
 # FUNÇÃO PRINCIPAL DO APLICATIVO
@@ -198,16 +239,31 @@ def main():
                 " Utilizamos modelos da OpenAI para comparar esses vetores por similaridade de cosseno, estimando a proximidade de conteúdo entre os textos."
             )
             num_vizinhos = st.slider(
-                "Número de vizinhos", 
-                min_value=1, 
-                max_value=10, 
-                value=5, 
-                step=1,
-                help=texto_ajuda
+                "Número de vizinhos", min_value=1, max_value=10, value=5, step=1, help=texto_ajuda
             )
 
-            fig = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
+            # Gera o grafo e captura os IDs dos nós exibidos
+            fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
             st.plotly_chart(fig, use_container_width=True)
+
+            st.divider()
+
+            # Lógica para o botão e exibição da análise
+            if st.button("Gerar Análise com IA 🧠", key="btn_analise"):
+                with st.spinner('A IA está lendo os resumos e preparando a análise... Por favor, aguarde.'):
+                    # Coleta os resumos dos nós exibidos no grafo
+                    summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
+                    full_text_summaries = "\n\n---\n\n".join(summaries_to_analyze)
+                    
+                    # Chama a função de IA e armazena o resultado no estado da sessão
+                    st.session_state.analysis_result = get_ai_synthesis(full_text_summaries)
+
+            # Exibe o resultado se ele existir no estado da sessão
+            if 'analysis_result' in st.session_state and st.session_state.analysis_result:
+                with st.container(border=True):
+                    st.subheader("Análise Gerada por IA")
+                    st.markdown(st.session_state.analysis_result)
+
         else:
             st.info("Selecione um registro na tabela para visualizar trabalhos similares.")
 
