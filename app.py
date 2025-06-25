@@ -72,39 +72,40 @@ def main():
 
     # 6. Lógica para exibir os detalhes da linha selecionada
     selected_rows = grid_response.get("selected_rows")
-    
-    if not selected_rows.empty:
-        selected_data_row = selected_rows.iloc[0]
-        original_index = selected_data_row.get('index_original')
-        detalhes = df.loc[original_index]
 
-        # --- INÍCIO DO LAYOUT AJUSTADO (SEM O USO DE <br>) ---
-        # Esta é a seção que foi corrigida.
-        
-        st.subheader("Detalhes do Registro")
-        st.markdown("---")
+    # NOVO: Cria um container de abas para organizar a seção de detalhes
+    tab_detalhes, = st.tabs(["Detalhes"])
 
-        # 1. Assuntos
-        st.markdown("#### Assuntos")
-        st.write(detalhes.get('Assuntos', 'Nenhum assunto listado.'))
+    with tab_detalhes:
+        # CORREÇÃO: Verifica se selected_rows não é None antes de checar se está vazio.
+        # Isso corrige o AttributeError no carregamento inicial.
+        if selected_rows is not None and not selected_rows.empty:
+            selected_data_row = selected_rows.iloc[0]
+            original_index = selected_data_row.get('index_original')
+            detalhes = df.loc[original_index]
 
-        # 2. Resumo
-        st.markdown("#### Resumo")
-        resumo = detalhes.get('Resumo_LLM', 'Resumo não disponível.')
-        st.write(resumo)
+            st.subheader("Detalhes do Registro")
+            st.markdown("---")
 
-        # 3. Link para Download
-        st.markdown("#### Link para Download")
-        link_pdf = detalhes.get('Link_PDF')
-        if link_pdf and isinstance(link_pdf, str):
-            st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
+            # 1. Assuntos
+            st.markdown("#### Assuntos")
+            st.write(detalhes.get('Assuntos', 'Nenhum assunto listado.'))
+
+            # 2. Resumo
+            st.markdown("#### Resumo")
+            resumo = detalhes.get('Resumo_LLM', 'Resumo não disponível.')
+            st.write(resumo)
+
+            # 3. Link para Download
+            st.markdown("#### Link para Download")
+            link_pdf = detalhes.get('Link_PDF')
+            if link_pdf and isinstance(link_pdf, str):
+                st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
+            else:
+                st.warning("Nenhum link para download disponível.")
+                
         else:
-            st.warning("Nenhum link para download disponível.")
-
-        # --- FIM DO LAYOUT AJUSTADO ---
-            
-    else:
-        st.info("Selecione um registro na tabela acima para ver os detalhes.")
+            st.info("Selecione um registro na tabela acima para ver os detalhes.")
 
 
 # --------------------------------------------------------------------------
