@@ -250,7 +250,6 @@ def main():
     st.title("Visualizador de Acervo Acadêmico")
 
     # --- CARREGAMENTO E VALIDAÇÃO DOS DADOS ---
-    # AJUSTE: Usando as constantes definidas no topo do script
     df = load_data(CSV_DATA_PATH)
     embeddings = load_embeddings(EMBEDDINGS_PATH)
 
@@ -259,14 +258,20 @@ def main():
         st.stop()
 
     # --- INICIALIZAÇÃO E PREPARAÇÃO ---
-    for key in ['analysis_cache', 'search_term', 'semantic_term', 'subject_filter', 'grid_key', 'selected_id', 'num_vizinhos_cache', 'last_simple_search', 'last_semantic_search']:
-        if key not in st.session_state:
-            st.session_state[key] = {} if key == 'analysis_cache' else None if key.endswith('_id') or key.endswith('_cache') else str(uuid.uuid4()) if key == 'grid_key' else ""
+    subject_options = prepare_subject_list(df)
+
+    # AJUSTE: Inicialização do session_state de forma correta e segura
+    if 'search_term' not in st.session_state: st.session_state.search_term = ""
+    if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
+    if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
+    if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
+    if 'grid_key' not in st.session_state: st.session_state.grid_key = str(uuid.uuid4())
+    if 'selected_id' not in st.session_state: st.session_state.selected_id = None
+    if 'num_vizinhos_cache' not in st.session_state: st.session_state.num_vizinhos_cache = None
 
     matriz_similaridade = calculate_similarity_matrix(embeddings)
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     df['index_original'] = df.index
-    subject_options = prepare_subject_list(df)
 
     st.markdown("Use as ferramentas de busca e filtros para explorar o acervo.")
     st.subheader("Ferramentas de Busca e Filtro")
@@ -289,14 +294,6 @@ def main():
 
     st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
 
-    if st.session_state.get('last_simple_search') != st.session_state.search_term or \
-       st.session_state.get('last_semantic_search') != st.session_state.semantic_term:
-        st.session_state.grid_key = str(uuid.uuid4())
-        if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
-        if 'selected_id' in st.session_state: del st.session_state['selected_id']
-    st.session_state.last_simple_search = st.session_state.search_term
-    st.session_state.last_semantic_search = st.session_state.semantic_term
-
     df_filtered = df.copy()
     if st.session_state.semantic_term:
         with st.spinner("Buscando por significado..."):
@@ -312,7 +309,7 @@ def main():
         mask = df_filtered[cols_to_search].fillna('').astype(str).apply(lambda col: col.str.contains(st.session_state.search_term, case=False)).any(axis=1)
         df_filtered = df_filtered[mask]
     
-    selected_subject = st.session_state.get('subject_filter', subject_options[0])
+    selected_subject = st.session_state.subject_filter
     if selected_subject != '-- Selecione um Assunto --':
         if 'Assuntos_Processados' not in df_filtered.columns:
              df_filtered['Assuntos_Processados'] = df_filtered['Assuntos_Lista'].apply(lambda s: ast.literal_eval(s) if isinstance(s, str) else [])
@@ -321,6 +318,14 @@ def main():
     
     df_display = df_filtered
     st.divider()
+    
+    # Lógica para resetar a seleção da tabela ao aplicar um filtro
+    current_filter_state = (st.session_state.search_term, st.session_state.semantic_term, st.session_state.subject_filter)
+    if st.session_state.get('last_filter_state') != current_filter_state:
+        st.session_state.grid_key = str(uuid.uuid4())
+        if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
+        if 'selected_id' in st.session_state: del st.session_state['selected_id']
+    st.session_state.last_filter_state = current_filter_state
 
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
     df_aggrid = df_display[cols_display + ['index_original']]
