@@ -223,30 +223,20 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         query_embedding = client.embeddings.create(input=[query_text], model=model).data[0].embedding
         similarities = cosine_similarity([query_embedding], _document_embeddings).flatten()
-        ranked_indices = np.argsort(-similarities)
-        return [i for i in ranked_indices if similarities[i] > 0.2][:20]
+        return [i for i in np.argsort(-similarities) if similarities[i] > 0.2][:20]
     except Exception as e:
         st.error(f"Erro na busca inteligente: {e}"); return []
 
 
 # --------------------------------------------------------------------------
-# FUNÇÃO PRINCIPAL DO APLICATIVO
+# FUNÇÕES DE RENDERIZAÇÃO DAS PÁGINAS
 # --------------------------------------------------------------------------
-def main():
-    setup_page()
-    st.title("Dissertações e Teses PPGDR v1")
 
-    # --- CARREGAMENTO E VALIDAÇÃO DOS DADOS ---
-    df = load_data(CSV_DATA_PATH)
-    embeddings = load_embeddings(EMBEDDINGS_PATH)
-
-    if not validate_data(df, embeddings):
-        st.warning("A aplicação não pode continuar devido a erros nos dados de entrada. Por favor, corrija os problemas acima.")
-        st.stop()
-
-    # --- INICIALIZAÇÃO E PREPARAÇÃO ---
-    subject_options = prepare_subject_list(df)
-
+def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
+    """Renderiza a página principal de consulta e análise de documentos."""
+    st.title("Consulta ao Acervo de Dissertações e Teses")
+    
+    # --- INICIALIZAÇÃO DE ESTADO (específico da página) ---
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
     if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
@@ -255,10 +245,6 @@ def main():
     if 'selected_id' not in st.session_state: st.session_state.selected_id = None
     if 'num_vizinhos_cache' not in st.session_state: st.session_state.num_vizinhos_cache = None
 
-    matriz_similaridade = calculate_similarity_matrix(embeddings)
-    df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
-    df['index_original'] = df.index
- 
     def clear_searches():
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
@@ -267,22 +253,20 @@ def main():
         if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
         if 'selected_id' in st.session_state: del st.session_state['selected_id']
 
-    # --- AJUSTE DE LAYOUT FINAL ---
-    # Primeira linha com as buscas por texto
+    # --- LAYOUT DOS FILTROS ---
     search_col1, search_col2 = st.columns(2)
     with search_col1:
         st.text_input("Busca simples", key="search_term", placeholder="Filtro por palavra-chave...")
     with search_col2:
         st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema e pressione Enter.")
 
-    # Segunda linha com o filtro de assunto e o botão de limpar
     filter_col1, filter_col2 = st.columns([3, 1])
     with filter_col1:
         st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
     with filter_col2:
         st.button("Limpar Tudo 🧹", on_click=clear_searches, use_container_width=True, help="Limpa todas as buscas e filtros.")
-    # --- FIM DO AJUSTE DE LAYOUT ---
-
+    
+    # --- LÓGICA DE FILTRAGEM ---
     df_filtered = df.copy()
     if st.session_state.semantic_term:
         with st.spinner("Buscando por significado..."):
@@ -308,6 +292,7 @@ def main():
     df_display = df_filtered
     st.divider()
     
+    # --- RENDERIZAÇÃO DA TABELA (AgGrid) ---
     current_filter_state = (st.session_state.search_term, st.session_state.semantic_term, st.session_state.subject_filter)
     if st.session_state.get('last_filter_state') != current_filter_state:
         st.session_state.grid_key = str(uuid.uuid4())
@@ -340,6 +325,7 @@ def main():
     )
     st.divider()
 
+    # --- ABAS DE DETALHES E SIMILARES ---
     selected_rows = grid_response.get("selected_rows")
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
 
@@ -406,6 +392,54 @@ def main():
         else:
             st.info("Selecione um registro na tabela para visualizar trabalhos similares.")
 
+def render_page_dashboard():
+    """Renderiza a página do Dashboard (placeholder)."""
+    st.title("Dashboard")
+    st.info("🚧 EM CONSTRUÇÃO 🚧")
+    st.write("Esta área será dedicada a visualizações e estatísticas gerais sobre o acervo.")
+
+def render_page_sobre():
+    """Renderiza a página Sobre (placeholder)."""
+    st.title("Sobre o Projeto")
+    st.info("🚧 EM CONSTRUÇÃO 🚧")
+    st.write("Esta página conterá informações sobre o projeto, os dados e as tecnologias utilizadas.")
+
+# --------------------------------------------------------------------------
+# FUNÇÃO PRINCIPAL DO APLICATIVO (ROTEADOR)
+# --------------------------------------------------------------------------
+def main():
+    setup_page()
+
+    # --- NAVEGAÇÃO NA BARRA LATERAL ---
+    with st.sidebar:
+        st.title("📚 PPGDR Explorer")
+        page_option = st.radio(
+            "Navegação",
+            ("Consultas", "Dashboard", "Sobre"),
+            label_visibility="collapsed"
+        )
+    
+    # --- CARREGAMENTO E VALIDAÇÃO DOS DADOS (feito uma vez) ---
+    df = load_data(CSV_DATA_PATH)
+    embeddings = load_embeddings(EMBEDDINGS_PATH)
+
+    if not validate_data(df, embeddings):
+        st.warning("A aplicação não pode continuar devido a erros nos dados de entrada. Por favor, corrija os problemas acima.")
+        st.stop()
+    
+    # --- PREPARAÇÃO DOS DADOS (feito uma vez) ---
+    matriz_similaridade = calculate_similarity_matrix(embeddings)
+    subject_options = prepare_subject_list(df)
+    df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
+    df['index_original'] = df.index
+
+    # --- ROTEAMENTO DE PÁGINAS ---
+    if page_option == "Consultas":
+        render_page_consultas(df, embeddings, matriz_similaridade, subject_options)
+    elif page_option == "Dashboard":
+        render_page_dashboard()
+    elif page_option == "Sobre":
+        render_page_sobre()
 
 # --------------------------------------------------------------------------
 # Ponto de entrada do script
