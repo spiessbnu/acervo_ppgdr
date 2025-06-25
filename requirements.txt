@@ -5,3 +5,4 @@ numpy
 networkx
 plotly
 scikit-learn
+openai
