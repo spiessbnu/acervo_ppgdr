@@ -410,14 +410,30 @@ def render_page_sobre():
 def main():
     setup_page()
 
-    # --- NAVEGAÇÃO NA BARRA LATERAL ---
+    # --- APLICA ESTILO CSS PARA A BARRA LATERAL ---
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] {
+                background-color: #0F5EDD;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # --- NAVEGAÇÃO NA BARRA LATERAL COM BOTÕES ---
+    # Inicializa o estado da página se não existir
+    if 'page' not in st.session_state:
+        st.session_state.page = "Consultas"
+
     with st.sidebar:
         st.title("📚 PPGDR Explorer")
-        page_option = st.radio(
-            "Navegação",
-            ("Consultas", "Dashboard", "Sobre"),
-            label_visibility="collapsed"
-        )
+        
+        # Botões para navegação que alteram o estado da sessão
+        if st.button("Consultas", use_container_width=True):
+            st.session_state.page = "Consultas"
+        if st.button("Dashboard", use_container_width=True):
+            st.session_state.page = "Dashboard"
+        if st.button("Sobre", use_container_width=True):
+            st.session_state.page = "Sobre"
     
     # --- CARREGAMENTO E VALIDAÇÃO DOS DADOS (feito uma vez) ---
     df = load_data(CSV_DATA_PATH)
@@ -433,12 +449,12 @@ def main():
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     df['index_original'] = df.index
 
-    # --- ROTEAMENTO DE PÁGINAS ---
-    if page_option == "Consultas":
+    # --- ROTEAMENTO DE PÁGINAS BASEADO NO ESTADO DA SESSÃO ---
+    if st.session_state.page == "Consultas":
         render_page_consultas(df, embeddings, matriz_similaridade, subject_options)
-    elif page_option == "Dashboard":
+    elif st.session_state.page == "Dashboard":
         render_page_dashboard()
-    elif page_option == "Sobre":
+    elif st.session_state.page == "Sobre":
         render_page_sobre()
 
 # --------------------------------------------------------------------------
