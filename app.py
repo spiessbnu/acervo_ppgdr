@@ -256,7 +256,7 @@ def main():
             
             # AJUSTE: Exibe o Título em destaque no topo da aba
             titulo = detalhes.get('Título', 'Título não disponível')
-            st.markdown(f"**{titulo}**")
+            st.subheader(titulo)
             st.divider()
 
             # Conteúdo restante da aba
