@@ -9,15 +9,15 @@ import networkx as nx
 import plotly.graph_objects as go
 from sklearn.metrics.pairwise import cosine_similarity
 import openai
-import uuid # Usado para gerar chaves únicas
+import uuid
 
 # --------------------------------------------------------------------------
 # FUNÇÃO 1: Configuração da página do Streamlit
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Visualizador de Acervo Acadêmico v7",
-        page_icon="✨",
+        page_title="Visualizador de Acervo Acadêmico v8",
+        page_icon="✅",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -58,11 +58,28 @@ def get_ai_synthesis(summaries: str) -> str:
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         prompt_template = """
-        Você é um assistente de pesquisa acadêmica. Sua tarefa é analisar um conjunto de resumos e gerar uma análise concisa no seguinte formato:
-        **Síntese Temática:**\n[Parágrafo único e coeso sobre temas, metodologias e conclusões.]\n\n**Termos Comuns:**\n- [Termo 1]\n- [Termo 2]\n- [Termo 3]\n- [Termo 4]\n- [Termo 5]
+        Você é um assistente de pesquisa acadêmica altamente qualificado. Sua tarefa é analisar um conjunto de resumos de trabalhos acadêmicos e gerar uma análise concisa.
+
+        Com base nos seguintes resumos:
+        ---
+        {summaries}
+        ---
+
+        Por favor, gere uma resposta estritamente no seguinte formato:
+
+        **Síntese Temática:**
+        [Um parágrafo coeso que resume os principais temas, metodologias e conclusões encontrados no conjunto de textos.]
+
+        **Termos Comuns:**
+        - [Termo 1]
+        - [Termo 2]
+        - [Termo 3]
+        - [Termo 4]
+        - [Termo 5]
         """
         prompt = prompt_template.format(summaries=summaries)
         response = client.chat.completions.create(
+            # AJUSTE: Utilizando o modelo mais acessível gpt-4o-mini
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Você é um assistente de pesquisa acadêmica."},
@@ -134,7 +151,6 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
         query_embedding = client.embeddings.create(input=[query_text], model=model).data[0].embedding
         similarities = cosine_similarity([query_embedding], _document_embeddings).flatten()
         ranked_indices = np.argsort(-similarities)
-        # AJUSTE: Limita os resultados aos 20 melhores
         return [i for i in ranked_indices if similarities[i] > 0.2][:20]
     except Exception as e:
         st.error(f"Erro na busca inteligente: {e}"); return []
@@ -147,7 +163,6 @@ def main():
     st.title("Visualizador de Acervo Acadêmico")
     st.markdown("Use a busca para encontrar trabalhos e selecione um na tabela para ver detalhes e similares.")
 
-    # Inicialização dos estados da sessão
     if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
@@ -164,30 +179,23 @@ def main():
     
     st.subheader("Ferramentas de Busca")
     
-    # AJUSTE: Função para limpar as buscas
     def clear_searches():
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
-        st.session_state.grid_key = str(uuid.uuid4()) # Força o reset da tabela
-        # Limpa os estados das abas também
+        st.session_state.grid_key = str(uuid.uuid4())
         if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
         if 'selected_id' in st.session_state: del st.session_state['selected_id']
 
     col1, col2, col3 = st.columns([2, 2, 1])
-    with col1:
-        st.text_input("Busca simples", key="search_term", placeholder="Filtro por palavra-chave...")
-    with col2:
-        st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema e pressione Enter.")
-    with col3:
-        st.button("Limpar buscas 🧹", on_click=clear_searches, use_container_width=True)
+    with col1: st.text_input("Busca simples", key="search_term", placeholder="Filtro por palavra-chave...")
+    with col2: st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema e pressione Enter.")
+    with col3: st.button("Limpar buscas 🧹", on_click=clear_searches, use_container_width=True)
 
-    # Lógica de reset ao iniciar uma nova busca
-    if st.session_state.search_term or st.session_state.semantic_term:
-        if st.session_state.get('last_simple_search') != st.session_state.search_term or \
-           st.session_state.get('last_semantic_search') != st.session_state.semantic_term:
-            st.session_state.grid_key = str(uuid.uuid4()) # Gera nova chave para resetar a AgGrid
-            if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
-            if 'selected_id' in st.session_state: del st.session_state['selected_id']
+    if st.session_state.get('last_simple_search') != st.session_state.search_term or \
+       st.session_state.get('last_semantic_search') != st.session_state.semantic_term:
+        st.session_state.grid_key = str(uuid.uuid4())
+        if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
+        if 'selected_id' in st.session_state: del st.session_state['selected_id']
     st.session_state.last_simple_search = st.session_state.search_term
     st.session_state.last_semantic_search = st.session_state.semantic_term
 
@@ -218,7 +226,7 @@ def main():
 
     grid_response = AgGrid(df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED,
                            enable_enterprise_modules=False, fit_columns_on_grid_load=True, 
-                           key=st.session_state.grid_key) # Usa a chave dinâmica para resetar
+                           key=st.session_state.grid_key)
     st.divider()
 
     selected_rows = grid_response.get("selected_rows")
@@ -263,12 +271,18 @@ def main():
                 if cache_key in st.session_state.analysis_cache:
                     st.toast("Reexibindo análise previamente gerada. ⚡"); st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]
                 else:
-                    with st.spinner('A IA está lendo e preparando a análise...'):
-                        summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
-                        full_text_summaries = "\n\n---\n\n".join(summaries_to_analyze)
-                        analysis = get_ai_synthesis(full_text_summaries)
-                        st.session_state.analysis_result = analysis
-                        st.session_state.analysis_cache[cache_key] = analysis
+                    summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
+                    full_text_summaries = "\n\n---\n\n".join(summaries_to_analyze)
+                    
+                    # AJUSTE: Verifica se há resumos antes de chamar a API
+                    if not full_text_summaries.strip():
+                        st.warning("Não foi possível gerar a análise, pois não há resumos disponíveis para os documentos selecionados.")
+                        st.session_state.analysis_result = "" # Limpa qualquer resultado anterior
+                    else:
+                        with st.spinner('A IA está lendo e preparando a análise...'):
+                            analysis = get_ai_synthesis(full_text_summaries)
+                            st.session_state.analysis_result = analysis
+                            st.session_state.analysis_cache[cache_key] = analysis
 
             if 'analysis_result' in st.session_state and st.session_state.analysis_result:
                 with st.container(border=True): st.subheader("Análise Gerada por IA"); st.markdown(st.session_state.analysis_result)
