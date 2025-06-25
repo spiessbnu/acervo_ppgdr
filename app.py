@@ -15,15 +15,13 @@ import openai
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Visualizador de Acervo Acadêmico v3",
-        page_icon="🧠",
+        page_title="Visualizador de Acervo Acadêmico v4",
+        page_icon="💡",
         layout="wide",
         initial_sidebar_state="expanded"
     )
 
-# --------------------------------------------------------------------------
-# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO COM CACHE
-# --------------------------------------------------------------------------
+# ... (As outras funções: load_data, load_embeddings, calculate_similarity_matrix, get_ai_synthesis, generate_similarity_graph permanecem exatamente as mesmas) ...
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     """Carrega o arquivo CSV principal e retorna um DataFrame."""
@@ -49,9 +47,6 @@ def calculate_similarity_matrix(_embeddings: np.ndarray) -> np.ndarray:
         return cosine_similarity(_embeddings)
     return np.array([])
 
-# --------------------------------------------------------------------------
-# FUNÇÃO DE IA PARA GERAR SÍNTESE
-# --------------------------------------------------------------------------
 def get_ai_synthesis(summaries: str) -> str:
     """Chama a API da OpenAI para gerar uma síntese dos textos."""
     try:
@@ -89,9 +84,6 @@ def get_ai_synthesis(summaries: str) -> str:
         st.error(f"Erro ao contatar a API de IA: {e}")
         return "Não foi possível gerar a análise. Verifique a configuração da chave de API ou tente novamente."
 
-# --------------------------------------------------------------------------
-# FUNÇÃO PARA GERAR O GRAFO DE SIMILARIDADE
-# --------------------------------------------------------------------------
 def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num_vizinhos):
     """Gera um grafo de similaridade e retorna a figura e os IDs dos nós."""
     
@@ -165,6 +157,10 @@ def main():
     st.title("Visualizador de Acervo Acadêmico")
     st.markdown("Selecione uma linha na tabela para ver detalhes e trabalhos similares.")
 
+    # NOVO: Inicialização do cache de análises no session_state, se não existir
+    if 'analysis_cache' not in st.session_state:
+        st.session_state.analysis_cache = {}
+
     df = load_data("dados_finais_com_resumo_llm.csv")
     embeddings = load_embeddings("openai_embeddings_concatenado_large.npy")
     matriz_similaridade = calculate_similarity_matrix(embeddings)
@@ -213,26 +209,24 @@ def main():
             st.warning("Não foi possível carregar os dados de similaridade. Verifique os arquivos.")
         elif selected_rows is not None and not selected_rows.empty:
             id_selecionado = selected_rows.iloc[0]['index_original']
-
-            # NOVO: Lógica para resetar a análise da IA ao trocar de seleção
-            if 'selected_id' not in st.session_state or st.session_state.selected_id != id_selecionado:
-                if 'analysis_result' in st.session_state:
-                    del st.session_state['analysis_result']
-                st.session_state.selected_id = id_selecionado
-
+            
             st.caption("Ajuste o controle abaixo para definir a quantidade de trabalhos similares a serem exibidos no grafo.")
-            texto_ajuda = (
-                "Este indicador de similaridade é calculado com base em embeddings de texto, que representam os resumos como vetores numéricos."
-                " Utilizamos modelos da OpenAI para comparar esses vetores por similaridade de cosseno, estimando a proximidade de conteúdo entre os textos."
-            )
+            texto_ajuda = ("Este indicador de similaridade é calculado com base em embeddings de texto...")
             num_vizinhos = st.slider(
                 "Número de vizinhos", min_value=1, max_value=10, value=5, step=1, help=texto_ajuda
             )
 
+            # AJUSTE: A lógica de reset agora considera também a mudança no slider
+            if (st.session_state.get('selected_id') != id_selecionado or 
+                st.session_state.get('num_vizinhos_cache') != num_vizinhos):
+                if 'analysis_result' in st.session_state:
+                    del st.session_state['analysis_result']
+                st.session_state.selected_id = id_selecionado
+                st.session_state.num_vizinhos_cache = num_vizinhos
+            
             fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
             st.plotly_chart(fig, use_container_width=True)
             
-            # NOVO: Exibe a tabela com os documentos do grafo
             st.write("Documentos incluídos no grafo:")
             df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
             st.dataframe(df_similares, use_container_width=True, hide_index=True)
@@ -240,10 +234,21 @@ def main():
             st.divider()
 
             if st.button("Gerar Análise com IA 🧠", key="btn_analise"):
-                with st.spinner('A IA está lendo os resumos e preparando a análise... Por favor, aguarde.'):
-                    summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
-                    full_text_summaries = "\n\n---\n\n".join(summaries_to_analyze)
-                    st.session_state.analysis_result = get_ai_synthesis(full_text_summaries)
+                cache_key = (id_selecionado, num_vizinhos)
+                
+                # AJUSTE: Lógica de cache para evitar novas chamadas à API
+                if cache_key in st.session_state.analysis_cache:
+                    st.toast("Reexibindo análise previamente gerada. ⚡")
+                    st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]
+                else:
+                    with st.spinner('A IA está lendo os resumos e preparando a análise... Por favor, aguarde.'):
+                        summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
+                        full_text_summaries = "\n\n---\n\n".join(summaries_to_analyze)
+                        
+                        analysis = get_ai_synthesis(full_text_summaries)
+                        st.session_state.analysis_result = analysis
+                        # Salva o resultado no cache
+                        st.session_state.analysis_cache[cache_key] = analysis
 
             if 'analysis_result' in st.session_state and st.session_state.analysis_result:
                 with st.container(border=True):
