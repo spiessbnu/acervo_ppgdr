@@ -49,9 +49,8 @@ def calculate_similarity_matrix(_embeddings: np.ndarray) -> np.ndarray:
     return np.array([])
 
 # --------------------------------------------------------------------------
-# FUNÇÃO PARA GERAR O GRAFO DE SIMILARIDADE (SIMPLIFICADA)
+# FUNÇÃO PARA GERAR O GRAFO DE SIMILARIDADE
 # --------------------------------------------------------------------------
-# AJUSTE: O parâmetro limiar_de_aresta foi removido
 def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num_vizinhos):
     """Gera um grafo de similaridade interativo com Plotly."""
     
@@ -65,7 +64,6 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
         level = 0 if node_id == id_documento_inicial else 1
         G.add_node(node_id, title=node_info['Título'], author=node_info['Autor'], level=level)
 
-    # AJUSTE: A lógica do limiar foi removida. Todos os vizinhos encontrados terão uma aresta.
     for vizinho_id in vizinhos_l1:
         similaridade = matriz_similaridade[id_documento_inicial, vizinho_id]
         G.add_edge(id_documento_inicial, vizinho_id, weight=similaridade)
@@ -117,10 +115,17 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
     node_trace.textposition = 'top center'
     node_trace.textfont = dict(size=9, color='#333')
 
+    # AJUSTE: A sintaxe do título do layout foi corrigida para a versão atual do Plotly.
     fig = go.Figure(data=[edge_trace, node_trace, edge_label_trace],
                  layout=go.Layout(
-                    title=f'<br>Rede de Similaridade para: "{df.iloc[id_documento_inicial]["Título"][:60]}..."',
-                    titlefont_size=16, showlegend=False, hovermode='closest',
+                    title={
+                        'text': f'<br>Rede de Similaridade para: "{df.iloc[id_documento_inicial]["Título"][:60]}..."',
+                        'font': {
+                            'size': 16
+                        }
+                    },
+                    showlegend=False,
+                    hovermode='closest',
                     margin=dict(b=20,l=5,r=5,t=40),
                     xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                     yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
@@ -180,17 +185,14 @@ def main():
         else:
             st.info("Selecione um registro na tabela acima para ver os detalhes.")
 
-    # --- ABA 2: TRABALHOS SIMILARES (Layout simplificado) ---
     with tab_similares:
         if embeddings.size == 0 or matriz_similaridade.size == 0:
             st.warning("Não foi possível carregar os dados de similaridade. Verifique os arquivos.")
         elif selected_rows is not None and not selected_rows.empty:
             id_selecionado = selected_rows.iloc[0]['index_original']
             
-            # AJUSTE: Texto explicativo simplificado
             st.caption("Ajuste o controle abaixo para definir a quantidade de trabalhos similares a serem exibidos no grafo.")
             
-            # AJUSTE: Slider único com o novo balão de ajuda (parâmetro 'help')
             texto_ajuda = (
                 "Este indicador de similaridade é calculado com base em embeddings de texto, que representam os resumos como vetores numéricos."
                 " Utilizamos modelos da OpenAI para comparar esses vetores por similaridade de cosseno, estimando a proximidade de conteúdo entre os textos."
@@ -204,7 +206,6 @@ def main():
                 help=texto_ajuda
             )
 
-            # AJUSTE: Chamada da função sem o limiar
             fig = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
             st.plotly_chart(fig, use_container_width=True)
         else:
