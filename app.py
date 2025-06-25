@@ -13,6 +13,12 @@ import uuid
 import unicodedata
 import ast
 
+# --------------------------------------------------------------------------
+# CONFIGURAÇÃO DE ARQUIVOS E CONSTANTES
+# --------------------------------------------------------------------------
+CSV_DATA_PATH = "dados_finais_com_resumo_llm.csv"
+EMBEDDINGS_PATH = "openai_embeddings_concatenado_large.npy"
+
 
 # --------------------------------------------------------------------------
 # FUNÇÃO 1: Configuração da página do Streamlit
@@ -244,8 +250,9 @@ def main():
     st.title("Visualizador de Acervo Acadêmico")
 
     # --- CARREGAMENTO E VALIDAÇÃO DOS DADOS ---
-    df = load_data("dados_finais_com_resumo_llm.csv")
-    embeddings = load_embeddings("openai_embeddings_concatenado_large.npy")
+    # AJUSTE: Usando as constantes definidas no topo do script
+    df = load_data(CSV_DATA_PATH)
+    embeddings = load_embeddings(EMBEDDINGS_PATH)
 
     if not validate_data(df, embeddings):
         st.warning("A aplicação não pode continuar devido a erros nos dados de entrada. Por favor, corrija os problemas acima.")
@@ -368,6 +375,7 @@ def main():
             id_selecionado = selected_rows.iloc[0]['index_original']
             st.caption("Ajuste a quantidade de trabalhos similares a serem exibidos.")
             num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1, help="Define o número de documentos similares no grafo.")
+            
             if st.session_state.get('selected_id') != id_selecionado or st.session_state.get('num_vizinhos_cache') != num_vizinhos:
                 if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
                 st.session_state.selected_id = id_selecionado
@@ -404,6 +412,7 @@ def main():
                     st.markdown(st.session_state.analysis_result)
         else:
             st.info("Selecione um registro na tabela para visualizar trabalhos similares.")
+
 
 # --------------------------------------------------------------------------
 # Ponto de entrada do script
