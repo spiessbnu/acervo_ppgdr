@@ -78,7 +78,8 @@ def main():
         original_index = selected_data_row.get('index_original')
         detalhes = df.loc[original_index]
 
-        # --- INÍCIO DO LAYOUT AJUSTADO ---
+        # --- INÍCIO DO LAYOUT AJUSTADO (SEM O USO DE <br>) ---
+        # Esta é a seção que foi corrigida.
         
         st.subheader("Detalhes do Registro")
         st.markdown("---")
@@ -105,12 +106,9 @@ def main():
     else:
         st.info("Selecione um registro na tabela acima para ver os detalhes.")
 
-# --------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
 # Ponto de entrada do script
-
 # --------------------------------------------------------------------------
-
 if __name__ == "__main__":
-
-    main()
+    main()
