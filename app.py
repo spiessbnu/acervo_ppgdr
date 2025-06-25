@@ -274,8 +274,8 @@ grid_response = AgGrid(
     enable_enterprise_modules=False,
     # O fit_columns_on_grid_load é útil, mas pode ser removido se você preferir o controle manual
     fit_columns_on_grid_load=False, 
-    key=st.session_state.grid_key
-)
+    key=st.session_state.grid_key)
+
     st.divider()
     selected_rows = grid_response.get("selected_rows")
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
