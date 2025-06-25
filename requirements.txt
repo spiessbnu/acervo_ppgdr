@@ -1,8 +1,17 @@
+# Arquivo de dependências para o projeto PPGDR Explorer
+
+# Core da aplicação web e componentes
 streamlit
-pandas
 streamlit-aggrid
+
+# Manipulação de dados e computação numérica
+pandas
 numpy
+
+# Geração de grafos e visualizações
 networkx
 plotly
+
+# Machine Learning e IA
 scikit-learn
 openai
