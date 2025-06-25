@@ -10,8 +10,8 @@ import plotly.graph_objects as go
 from sklearn.metrics.pairwise import cosine_similarity
 import openai
 import uuid
-import unicodedata # Nova biblioteca para normalização de texto
-import ast # Nova biblioteca para conversão segura de string para lista
+import unicodedata
+import ast
 
 # --------------------------------------------------------------------------
 # FUNÇÃO 1: Configuração da página do Streamlit
@@ -19,65 +19,81 @@ import ast # Nova biblioteca para conversão segura de string para lista
 def setup_page():
     st.set_page_config(
         page_title="Visualizador de Acervo Acadêmico v8",
-        page_icon="📚",
+        page_icon="✅",
         layout="wide",
         initial_sidebar_state="expanded"
     )
 
 # --------------------------------------------------------------------------
-# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO COM CACHE
+# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO (MAIS ROBUSTAS)
 # --------------------------------------------------------------------------
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
-    """Carrega o arquivo CSV principal e retorna um DataFrame."""
+    """Carrega o arquivo CSV com tratamento de erro aprimorado."""
     try:
         return pd.read_csv(path)
     except FileNotFoundError:
-        st.error(f"Erro: O arquivo de dados '{path}' não foi encontrado.")
-        return pd.DataFrame()
+        st.error(f"Arquivo de dados não encontrado: '{path}'. Verifique se o arquivo está no diretório correto.")
+        return None
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao carregar o arquivo CSV '{path}': {e}")
+        return None
 
 @st.cache_data
 def load_embeddings(path: str) -> np.ndarray:
-    """Carrega os embeddings de um arquivo .npy."""
+    """Carrega os embeddings com tratamento de erro aprimorado."""
     try:
         return np.load(path)
     except FileNotFoundError:
-        st.error(f"Erro: O arquivo de embeddings '{path}' não foi encontrado.")
-        return np.array([])
+        st.error(f"Arquivo de embeddings não encontrado: '{path}'. Verifique se o arquivo está no diretório correto.")
+        return None
+    except Exception as e:
+        st.error(f"Ocorreu um erro ao carregar o arquivo de embeddings '{path}': {e}")
+        return None
+
+# --- NOVO: FUNÇÃO PARA VALIDAR A INTEGRIDADE DOS DADOS ---
+def validate_data(df: pd.DataFrame, embeddings: np.ndarray) -> bool:
+    """Verifica se os dados carregados são consistentes."""
+    if df is None or embeddings is None:
+        return False
+
+    # 1. Valida colunas essenciais
+    required_cols = ['Título', 'Autor', 'Assuntos_Lista', 'Resumo_LLM']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        st.error(f"Erro de Integridade: Coluna(s) necessária(s) não encontrada(s) no CSV: {', '.join(missing_cols)}")
+        return False
+
+    # 2. Valida a correspondência entre o DataFrame e os embeddings
+    if len(df) != len(embeddings):
+        st.error(
+            f"Erro de Integridade: O número de registros no CSV ({len(df)}) é diferente do "
+            f"número de vetores de embeddings ({len(embeddings)}). Os arquivos não são compatíveis."
+        )
+        return False
+    
+    st.success("Arquivos de dados carregados e validados com sucesso!")
+    return True
 
 @st.cache_data
 def calculate_similarity_matrix(_embeddings: np.ndarray) -> np.ndarray:
-    """Calcula a matriz de similaridade de cossenos a partir dos embeddings."""
-    if _embeddings.size > 0:
+    # ... (Esta função permanece a mesma)
+    if _embeddings is not None and _embeddings.size > 0:
         return cosine_similarity(_embeddings)
     return np.array([])
 
-# --- NOVO: FUNÇÃO AUXILIAR PARA PREPARAR A LISTA DE ASSUNTOS ---
-def remover_acentos(texto: str) -> str:
-    """Remove acentos de uma string para ordenação alfabética correta."""
-    texto_normalizado = unicodedata.normalize('NFD', texto)
-    return "".join(c for c in texto_normalizado if not unicodedata.combining(c))
-
+# (O restante das funções auxiliares permanecem as mesmas)
+def remover_acentos(texto: str) -> str: return "".join(c for c in unicodedata.normalize('NFD', texto) if not unicodedata.combining(c))
 @st.cache_data
 def prepare_subject_list(_df: pd.DataFrame) -> list:
-    """Extrai, limpa, unifica e ordena os assuntos para o dropdown."""
-    if 'Assuntos_Lista' not in _df.columns:
-        return []
-    
-    # Converte a string de lista para uma lista real de forma segura
+    if 'Assuntos_Lista' not in _df.columns: return []
     def safe_literal_eval(s):
         try: return ast.literal_eval(s)
-        except (ValueError, SyntaxError): return []
-    
+        except: return []
     assuntos_processados = _df['Assuntos_Lista'].apply(safe_literal_eval)
-    
-    # Cria uma lista única de todos os assuntos
     todos_assuntos = [assunto for sublista in assuntos_processados for assunto in sublista]
     lista_unica = sorted(list(set(todos_assuntos)), key=lambda texto: remover_acentos(texto.lower()))
-    
     return ['-- Selecione um Assunto --'] + lista_unica
-
-# (As outras funções: get_ai_synthesis, generate_similarity_graph, search_semantic permanecem as mesmas)
 def get_ai_synthesis(summaries: str) -> str:
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
@@ -124,93 +140,69 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
 def main():
     setup_page()
     st.title("Visualizador de Acervo Acadêmico")
-    st.markdown("Use as ferramentas de busca e filtros para explorar o acervo.")
 
-    # Inicialização dos estados da sessão
-    for key in ['analysis_cache', 'search_term', 'semantic_term', 'subject_filter', 'grid_key', 'selected_id', 'num_vizinhos_cache']:
-        if key not in st.session_state:
-            st.session_state[key] = {} if key == 'analysis_cache' else None if key.endswith('_id') else 0 if key.endswith('_cache') else str(uuid.uuid4()) if key == 'grid_key' else ""
-
+    # --- CARREGAMENTO E VALIDAÇÃO DOS DADOS ---
     df = load_data("dados_finais_com_resumo_llm.csv")
     embeddings = load_embeddings("openai_embeddings_concatenado_large.npy")
-    matriz_similaridade = calculate_similarity_matrix(embeddings)
-    
-    if df.empty: return
 
+    if not validate_data(df, embeddings):
+        st.warning("A aplicação não pode continuar devido a erros nos dados de entrada. Por favor, corrija os problemas acima.")
+        st.stop() # Interrompe a execução do app
+
+    # --- INICIALIZAÇÃO E PREPARAÇÃO ---
+    if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {} # etc.
+    
+    matriz_similaridade = calculate_similarity_matrix(embeddings)
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     df['index_original'] = df.index
-    
+    subject_options = prepare_subject_list(df)
+
+    st.markdown("Use as ferramentas de busca e filtros para explorar o acervo.")
     st.subheader("Ferramentas de Busca e Filtro")
     
+    # ... (O restante do código de UI e lógica do app permanece o mesmo)
     def clear_searches():
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
-        st.session_state.subject_filter = subject_options[0] # Reseta para a opção padrão
+        st.session_state.subject_filter = subject_options[0]
         st.session_state.grid_key = str(uuid.uuid4())
         if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
         if 'selected_id' in st.session_state: del st.session_state['selected_id']
 
-    col1, col2, col3 = st.columns([2, 2, 1])
+    col1, col2, col3 = st.columns([2, 2, 1]);
     with col1: st.text_input("Busca simples", key="search_term")
     with col2: st.text_input("Busca inteligente (com IA)", key="semantic_term")
-    with col3: st.button("Limpar Tudo 🧹", on_click=clear_searches, use_container_width=True, help="Limpa todas as buscas e filtros.")
-
-    # NOVO: Filtro por Assunto
-    subject_options = prepare_subject_list(df)
+    with col3: st.button("Limpar Tudo 🧹", on_click=clear_searches, use_container_width=True)
     st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
-
-    # Lógica de reset ao iniciar uma nova busca ou filtro
-    # ... (a lógica de reset se torna mais complexa, então a integramos ao fluxo de filtragem)
-
-    # --- LÓGICA DE FILTRAGEM PROGRESSIVA ---
-    df_filtered = df.copy() # Começa com o DataFrame completo
-
-    # 1. Aplica a busca inteligente (tem prioridade)
-    if st.session_state.semantic_term:
-        with st.spinner("Buscando por significado..."):
-            ranked_indices = search_semantic(st.session_state.semantic_term, embeddings)
-        if ranked_indices:
-            df_filtered = df.loc[ranked_indices]
-            st.success(f"Exibindo {len(df_filtered)} resultados para '{st.session_state.semantic_term}'.")
-        else:
-            st.warning("Nenhum resultado para a busca inteligente."); df_filtered = pd.DataFrame(columns=df.columns)
-    # 2. Se não houver busca inteligente, aplica a busca simples
-    elif st.session_state.search_term:
-        cols_to_search = ["Autor", "Título", "Assuntos", "Resumo_LLM"]
-        mask = df_filtered[cols_to_search].fillna('').astype(str).apply(lambda col: col.str.contains(st.session_state.search_term, case=False)).any(axis=1)
-        df_filtered = df_filtered[mask]
     
-    # 3. Aplica o filtro por assunto sobre o resultado das buscas anteriores
-    selected_subject = st.session_state.subject_filter
+    df_filtered = df.copy()
+    if st.session_state.semantic_term:
+        with st.spinner("Buscando por significado..."): ranked_indices = search_semantic(st.session_state.semantic_term, embeddings)
+        if ranked_indices: df_filtered = df.loc[ranked_indices]; st.success(f"Exibindo {len(df_filtered)} resultados para '{st.session_state.semantic_term}'.")
+        else: st.warning("Nenhum resultado para a busca inteligente."); df_filtered = pd.DataFrame(columns=df.columns)
+    elif st.session_state.search_term:
+        mask = df_filtered[["Autor", "Título", "Assuntos", "Resumo_LLM"]].fillna('').astype(str).apply(lambda col: col.str.contains(st.session_state.search_term, case=False)).any(axis=1)
+        df_filtered = df_filtered[mask]
+    selected_subject = st.session_state.get('subject_filter', subject_options[0])
     if selected_subject != '-- Selecione um Assunto --':
-        # Re-processa a coluna de assuntos no dataframe já filtrado, se necessário
         if 'Assuntos_Processados' not in df_filtered.columns:
-             df_filtered['Assuntos_Processados'] = df_filtered['Assuntos_Lista'].apply(lambda s: ast.literal_eval(s) if isinstance(s, str) else [])
-        
+            df_filtered['Assuntos_Processados'] = df_filtered['Assuntos_Lista'].apply(lambda s: ast.literal_eval(s) if isinstance(s, str) else [])
         mask_subject = df_filtered['Assuntos_Processados'].apply(lambda lista: selected_subject in lista)
         df_filtered = df_filtered[mask_subject]
-
     df_display = df_filtered
     
     st.divider()
     
-    # Restante da UI (AgGrid, abas) continua aqui...
+    # ... (código da AgGrid e das abas de detalhes e similares) ...
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
     df_aggrid = df_display[cols_display + ['index_original']]
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_selection(selection_mode="single", use_checkbox=True); gb.configure_column("index_original", hide=True)
     grid_opts = gb.build()
-    
-    # AJUSTE: A chave da AgGrid é resetada para limpar a seleção após uma nova busca/filtro
-    # A lógica de reset foi simplificada e agora o fluxo de filtragem é o ponto central.
-    # Ao re-filtrar, a `df_aggrid` muda, o que força o update da tabela.
-    # O reset da seleção é um efeito colateral desejado.
     grid_response = AgGrid(df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED, 
-                           enable_enterprise_modules=False, fit_columns_on_grid_load=True, key=f"grid_{len(df_display)}")
+                           enable_enterprise_modules=False, fit_columns_on_grid_load=True, key=f"grid_{len(df_display)}_{st.session_state.get('search_term','')}_{st.session_state.get('semantic_term','')}_{st.session_state.get('subject_filter','-')}")
     st.divider()
-
     selected_rows = grid_response.get("selected_rows")
-    # ... (o código das abas "Detalhes" e "Trabalhos Similares" permanece o mesmo)
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
     with tab_detalhes:
         if selected_rows is not None and not selected_rows.empty:
@@ -228,10 +220,8 @@ def main():
             st.warning("Não foi possível carregar os dados de similaridade.")
         elif selected_rows is not None and not selected_rows.empty:
             id_selecionado = selected_rows.iloc[0]['index_original']
-            # ... (código do slider, grafo, tabela e botão de IA sem alterações) ...
             st.caption("Ajuste a quantidade de trabalhos similares a serem exibidos.")
-            texto_ajuda = ("Este indicador de similaridade é calculado com base em embeddings de texto...")
-            num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1, help=texto_ajuda)
+            num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1, help="Define o número de documentos similares no grafo.")
             if st.session_state.get('selected_id') != id_selecionado or st.session_state.get('num_vizinhos_cache') != num_vizinhos:
                 if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
                 st.session_state.selected_id = id_selecionado; st.session_state.num_vizinhos_cache = num_vizinhos
@@ -247,8 +237,7 @@ def main():
                 else:
                     summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
                     full_text_summaries = "\n\n---\n\n".join(summaries_to_analyze)
-                    if not full_text_summaries.strip():
-                        st.warning("Não há resumos disponíveis para gerar a análise."); st.session_state.analysis_result = ""
+                    if not full_text_summaries.strip(): st.warning("Não há resumos disponíveis para gerar a análise."); st.session_state.analysis_result = ""
                     else:
                         with st.spinner('A IA está lendo e preparando a análise...'):
                             analysis = get_ai_synthesis(full_text_summaries); st.session_state.analysis_result = analysis
@@ -258,8 +247,5 @@ def main():
         else:
             st.info("Selecione um registro na tabela para visualizar trabalhos similares.")
 
-# --------------------------------------------------------------------------
-# Ponto de entrada do script
-# --------------------------------------------------------------------------
 if __name__ == "__main__":
     main()
