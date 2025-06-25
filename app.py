@@ -93,7 +93,7 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
         x=[], y=[],
         mode='markers+text',
         text=[],
-        hovertext=[], # <-- A CORREÇÃO ESTÁ AQUI
+        hovertext=[],
         hovertemplate="%{hovertext}",
         marker=dict(color=[], size=[], line_width=2)
     )
@@ -201,6 +201,15 @@ def main():
             id_selecionado = selected_rows.iloc[0]['index_original']
             
             st.subheader("Controles da Visualização")
+            
+            # --- TEXTO EXPLICATIVO ADICIONADO AQUI ---
+            texto_explicativo = (
+                "<span style='color:blue'>Ajuste o **Número de vizinhos** para a quantidade de textos similares e o "
+                "**Limiar de similaridade** para selecionar textos mais ou menos similares para a visualização.</span>"
+            )
+            st.markdown(texto_explicativo, unsafe_allow_html=True)
+            st.write("") # Adiciona um pequeno espaço vertical
+
             col1, col2 = st.columns(2)
             with col1:
                 num_vizinhos = st.slider("Número de vizinhos", min_value=1, max_value=10, value=5, step=1)
