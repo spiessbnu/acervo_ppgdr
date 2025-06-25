@@ -49,31 +49,27 @@ def calculate_similarity_matrix(_embeddings: np.ndarray) -> np.ndarray:
     return np.array([])
 
 # --------------------------------------------------------------------------
-# FUNÇÃO PARA GERAR O GRAFO DE SIMILARIDADE
+# FUNÇÃO PARA GERAR O GRAFO DE SIMILARIDADE (SIMPLIFICADA)
 # --------------------------------------------------------------------------
-def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num_vizinhos, limiar_de_aresta):
+# AJUSTE: O parâmetro limiar_de_aresta foi removido
+def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num_vizinhos):
     """Gera um grafo de similaridade interativo com Plotly."""
     
-    # --- 1. Coleta dos Nós e Construção do Grafo ---
     nos_da_rede = {id_documento_inicial}
-    # Encontra os N vizinhos mais próximos (excluindo ele mesmo)
     vizinhos_l1 = np.argsort(matriz_similaridade[id_documento_inicial])[-num_vizinhos-1:-1][::-1]
     nos_da_rede.update(vizinhos_l1)
 
     G = nx.Graph()
-    # Adiciona os nós
     for node_id in nos_da_rede:
         node_info = df.iloc[node_id]
         level = 0 if node_id == id_documento_inicial else 1
         G.add_node(node_id, title=node_info['Título'], author=node_info['Autor'], level=level)
 
-    # Adiciona arestas do nó central para seus vizinhos
+    # AJUSTE: A lógica do limiar foi removida. Todos os vizinhos encontrados terão uma aresta.
     for vizinho_id in vizinhos_l1:
         similaridade = matriz_similaridade[id_documento_inicial, vizinho_id]
-        if similaridade >= limiar_de_aresta:
-            G.add_edge(id_documento_inicial, vizinho_id, weight=similaridade)
+        G.add_edge(id_documento_inicial, vizinho_id, weight=similaridade)
             
-    # --- 2. Visualização Interativa com Plotly ---
     pos = nx.spring_layout(G, k=0.8, iterations=50, seed=42)
 
     edge_trace = go.Scatter(x=[], y=[], line=dict(width=1, color='#888'), hoverinfo='none', mode='lines')
@@ -90,12 +86,8 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
         edge_label_trace['text'] += tuple([f"{edge[2]['weight']:.2f}"])
 
     node_trace = go.Scatter(
-        x=[], y=[],
-        mode='markers+text',
-        text=[],
-        hovertext=[],
-        hovertemplate="%{hovertext}",
-        marker=dict(color=[], size=[], line_width=2)
+        x=[], y=[], mode='markers+text', text=[], hovertext=[],
+        hovertemplate="%{hovertext}", marker=dict(color=[], size=[], line_width=2)
     )
     
     cores_niveis = {0: 'crimson', 1: 'royalblue'}
@@ -117,10 +109,8 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
             similarity_text = f"Similaridade: {similarity_score:.3f}"
 
         node_trace['marker']['size'] += tuple([size])
-        
         hover_text = f"<b>{info['title']}</b><br>Autor: {info['author']}<br>{similarity_text}"
         node_trace['hovertext'] += tuple([hover_text])
-        
         label_texto = info['title'][:30] + '...' if len(info['title']) > 30 else info['title']
         node_trace['text'] += tuple([label_texto])
 
@@ -138,14 +128,13 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
     return fig
 
 # --------------------------------------------------------------------------
-# FUNÇÃO 3: Corpo principal do aplicativo
+# FUNÇÃO PRINCIPAL DO APLICATIVO
 # --------------------------------------------------------------------------
 def main():
     setup_page()
     st.title("Visualizador de Acervo Acadêmico")
     st.markdown("Selecione uma linha na tabela para ver detalhes e trabalhos similares.")
 
-    # --- CARREGAMENTO INICIAL DE TODOS OS DADOS ---
     df = load_data("dados_finais_com_resumo_llm.csv")
     embeddings = load_embeddings("openai_embeddings_concatenado_large.npy")
     matriz_similaridade = calculate_similarity_matrix(embeddings)
@@ -173,10 +162,8 @@ def main():
 
     selected_rows = grid_response.get("selected_rows")
 
-    # --- CRIAÇÃO DAS ABAS ---
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
 
-    # --- ABA 1: DETALHES ---
     with tab_detalhes:
         if selected_rows is not None and not selected_rows.empty:
             detalhes = df.loc[selected_rows.iloc[0]['index_original']]
@@ -193,31 +180,32 @@ def main():
         else:
             st.info("Selecione um registro na tabela acima para ver os detalhes.")
 
-    # --- ABA 2: TRABALHOS SIMILARES ---
+    # --- ABA 2: TRABALHOS SIMILARES (Layout simplificado) ---
     with tab_similares:
         if embeddings.size == 0 or matriz_similaridade.size == 0:
             st.warning("Não foi possível carregar os dados de similaridade. Verifique os arquivos.")
         elif selected_rows is not None and not selected_rows.empty:
             id_selecionado = selected_rows.iloc[0]['index_original']
             
-            st.subheader("Controles da Visualização")
+            # AJUSTE: Texto explicativo simplificado
+            st.caption("Ajuste o controle abaixo para definir a quantidade de trabalhos similares a serem exibidos no grafo.")
             
-            # --- TEXTO EXPLICATIVO ADICIONADO AQUI ---
-            texto_explicativo = (
-                "<span style='color:blue'>Ajuste o **Número de vizinhos** para a quantidade de textos similares e o "
-                "**Limiar de similaridade** para selecionar textos mais ou menos similares para a visualização.</span>"
+            # AJUSTE: Slider único com o novo balão de ajuda (parâmetro 'help')
+            texto_ajuda = (
+                "Este indicador de similaridade é calculado com base em embeddings de texto, que representam os resumos como vetores numéricos."
+                " Utilizamos modelos da OpenAI para comparar esses vetores por similaridade de cosseno, estimando a proximidade de conteúdo entre os textos."
             )
-            st.markdown(texto_explicativo, unsafe_allow_html=True)
-            st.write("") # Adiciona um pequeno espaço vertical
+            num_vizinhos = st.slider(
+                "Número de vizinhos", 
+                min_value=1, 
+                max_value=10, 
+                value=5, 
+                step=1,
+                help=texto_ajuda
+            )
 
-            col1, col2 = st.columns(2)
-            with col1:
-                num_vizinhos = st.slider("Número de vizinhos", min_value=1, max_value=10, value=5, step=1)
-            with col2:
-                limiar_similaridade = st.slider("Limiar de similaridade", min_value=0.10, max_value=0.50, value=0.20, step=0.01)
-
-            # Gera e exibe o gráfico
-            fig = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos, limiar_similaridade)
+            # AJUSTE: Chamada da função sem o limiar
+            fig = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Selecione um registro na tabela para visualizar trabalhos similares.")
