@@ -104,3 +104,13 @@ def main():
             
     else:
         st.info("Selecione um registro na tabela acima para ver os detalhes.")
+
+# --------------------------------------------------------------------------
+
+# Ponto de entrada do script
+
+# --------------------------------------------------------------------------
+
+if __name__ == "__main__":
+
+    main()
