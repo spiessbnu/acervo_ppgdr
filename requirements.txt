@@ -1,9 +1,7 @@
-streamlit==1.46.0
+streamlit
+pandas
 streamlit-aggrid
-pandas==2.2.3
-plotly==5.24.1
-scikit-learn==1.7.0
-nltk==3.9.1
-networkx==3.5
-numpy==1.26.4
-openai==1.54.3
+numpy
+networkx
+plotly
+scikit-learn
