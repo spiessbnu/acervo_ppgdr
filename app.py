@@ -332,6 +332,7 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     st.title("Dashboard de Análise do Acervo")
     st.markdown("---")
     
+    # Gráfico 1: Top 20 Assuntos Mais Frequentes
     st.subheader("Top 20 Assuntos Mais Frequentes")
     todos_assuntos = [assunto for sublista in df['Assuntos_Processados'] for assunto in sublista]
     if todos_assuntos:
@@ -343,6 +344,7 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
         st.plotly_chart(fig_assuntos, use_container_width=True)
     st.markdown("---")
 
+    # Gráfico 2: Produção Anual por Tipo de Documento
     st.subheader("Produção Anual por Tipo de Documento")
     contagem_agrupada = df.groupby(['Ano', 'Tipo de Documento']).size().reset_index(name='Quantidade').sort_values('Ano')
     if not contagem_agrupada.empty:
@@ -352,32 +354,63 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
         st.plotly_chart(fig_producao, use_container_width=True)
     st.markdown("---")
 
+    # Gráfico 3: Visualização de Clusters de Documentos
     st.subheader("Visualização de Clusters de Documentos (PCA + K-Means)")
     with st.expander("ℹ️ Como interpretar este gráfico?"):
-        st.markdown("""(Texto explicativo completo mantido como antes)""")
+        st.markdown("""
+        Este gráfico organiza todos os documentos do acervo em um espaço 3D, agrupando-os por similaridade de conteúdo.
 
-    # ###################################### #
-    # ##      ALTERAÇÕES APLICADAS AQUI     ##
-    # ###################################### #
+        - **a) O que os eixos (PCA) representam?**
+          Os eixos `Componente Principal 1, 2 e 3` são o resultado de uma técnica de compressão de dados chamada PCA. Eles reduzem as centenas de dimensões semânticas de um texto a apenas três, para que possamos visualizá-los. **Documentos que estão próximos neste espaço 3D são mais similares em conteúdo** do que aqueles que estão distantes.
+
+        - **b) O que os clusters (cores) representam?**
+          Cada cor representa um "cluster", ou seja, um **grupo de documentos que o algoritmo identificou como sendo muito parecidos entre si**. É provável que os documentos de um mesmo cluster compartilhem os mesmos temas, conceitos ou abordagens.
+
+        - **c) Como interpretar o gráfico?**
+          Procure por grupos de cores (clusters) que estão densos e bem separados uns dos outros, pois isso indica tópicos distintos no acervo. Passe o mouse sobre um ponto para ver o título e o autor do trabalho, ajudando a entender o tema daquele cluster.
+
+        - **d) Como interagir com o gráfico?**
+          O gráfico é totalmente interativo:
+          - **Clique e arraste** para rotacionar.
+          - Use a **roda do mouse** para aplicar zoom.
+          - **Clique nos itens da legenda** à direita para ativar ou desativar a visualização de clusters específicos. Isso é útil para focar a análise em grupos de seu interesse.
+        """)
+        
     k_escolhido = st.slider("Selecione o número de clusters (k):", min_value=2, max_value=8, value=4, step=1, help="Escolha em quantos grupos os documentos devem ser divididos.")
     
     with st.spinner(f"Calculando {k_escolhido} clusters..."):
         df_plot_3d = compute_clusters(embeddings, k_escolhido)
         df_plot_3d['Título'] = df['Título']
         df_plot_3d['Autor'] = df['Autor']
-        # Convertendo para string para garantir cores discretas
+        # Convertendo para string para garantir cores categóricas e discretas
         df_plot_3d['cluster'] = df_plot_3d['cluster'].astype(str)
+
+        # ###################################### #
+        # ##      ALTERAÇÕES APLICADAS AQUI     ##
+        # ###################################### #
+        # Amostra 8 cores distintas da escala Viridis para usar como paleta discreta
+        cores_viridis_discreto = px.colors.sample_colorscale("Viridis", 8)
 
         fig_3d = px.scatter_3d(
             df_plot_3d, x='pca1', y='pca2', z='pca3', color='cluster', hover_name='Título',
             hover_data={'Autor': True, 'cluster': True, 'pca1': False, 'pca2': False, 'pca3': False},
             title=f'Clusters de Documentos (k={k_escolhido})',
-            color_discrete_sequence=px.colors.sequential.Blues # Usando a escala de Azuis
+            color_discrete_sequence=cores_viridis_discreto # Usando a paleta Viridis de forma discreta
         )
         
         fig_3d.update_traces(marker=dict(size=4, opacity=0.8))
-        fig_3d.update_layout(height=700, legend_title_text='Clusters', scene=dict(xaxis_title='Comp. Principal 1', yaxis_title='Comp. Principal 2', zaxis_title='Comp. Principal 3', aspectmode='cube'))
+        fig_3d.update_layout(
+            height=700, 
+            legend_title_text='Clusters', 
+            scene=dict(
+                xaxis_title='Comp. Principal 1', 
+                yaxis_title='Comp. Principal 2', 
+                zaxis_title='Comp. Principal 3', 
+                aspectmode='cube'
+            )
+        )
         st.plotly_chart(fig_3d, use_container_width=True)
+
 
 def render_page_sobre():
     st.title("Sobre o Projeto")
