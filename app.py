@@ -135,9 +135,7 @@ def compute_clusters(_embeddings, k):
 # FUNÇÕES DE IA E GRAFOS
 # --------------------------------------------------------------------------
 def get_ai_synthesis(summaries: str) -> str:
-    """
-    Chama a API da OpenAI com um prompt aprimorado para gerar uma síntese analítica dos textos.
-    """
+    """Chama a API da OpenAI para gerar uma síntese analítica dos textos."""
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         prompt_template = """
@@ -213,46 +211,150 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     """Renderiza a página principal de consulta e análise de documentos."""
     st.title("Consulta ao Acervo de Dissertações e Teses")
     
-    # (Código completo da página de Consultas mantido como antes)
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
-    # ... (restante da implementação completa)
+    if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
+    if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
+    if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
+    if 'grid_key' not in st.session_state: st.session_state.grid_key = str(uuid.uuid4())
+    if 'selected_id' not in st.session_state: st.session_state.selected_id = None
+    if 'num_vizinhos_cache' not in st.session_state: st.session_state.num_vizinhos_cache = None
+
+    def clear_searches():
+        st.session_state.search_term = ""
+        st.session_state.semantic_term = ""
+        st.session_state.subject_filter = subject_options[0]
+        st.session_state.grid_key = str(uuid.uuid4())
+        if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
+        if 'selected_id' in st.session_state: del st.session_state['selected_id']
+
+    search_col1, search_col2 = st.columns(2)
+    with search_col1:
+        st.text_input("Busca simples", key="search_term", placeholder="Filtro por palavra-chave...")
+    with search_col2:
+        st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema e pressione Enter.")
+    filter_col1, filter_col2 = st.columns([3, 1])
+    with filter_col1:
+        st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
+    with filter_col2:
+        st.button("Limpar Tudo 🧹", on_click=clear_searches, use_container_width=True, help="Limpa todas as buscas e filtros.")
+    
+    df_filtered = df.copy()
+    if st.session_state.semantic_term:
+        with st.spinner("Buscando por significado..."):
+            ranked_indices = search_semantic(st.session_state.semantic_term, embeddings)
+        if ranked_indices:
+            df_filtered = df.loc[ranked_indices]
+            st.success(f"Exibindo {len(df_filtered)} resultados.")
+        else:
+            st.warning("Nenhum resultado para a busca inteligente.")
+            df_filtered = pd.DataFrame(columns=df.columns)
+    elif st.session_state.search_term:
+        cols_to_search = ["Autor", "Título", "Assuntos", "Resumo_LLM"]
+        mask = df_filtered[cols_to_search].fillna('').astype(str).apply(lambda col: col.str.contains(st.session_state.search_term, case=False)).any(axis=1)
+        df_filtered = df_filtered[mask]
+    
+    selected_subject = st.session_state.get('subject_filter', subject_options[0])
+    if selected_subject != '-- Selecione um Assunto --':
+        mask_subject = df_filtered['Assuntos_Processados'].apply(lambda lista: selected_subject in lista)
+        df_filtered = df_filtered[mask_subject]
+    
+    st.divider()
+    
+    current_filter_state = (st.session_state.search_term, st.session_state.semantic_term, st.session_state.subject_filter)
+    if st.session_state.get('last_filter_state') != current_filter_state:
+        st.session_state.grid_key = str(uuid.uuid4())
+        if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
+        if 'selected_id' in st.session_state: del st.session_state['selected_id']
+    st.session_state.last_filter_state = current_filter_state
+
+    cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
+    df_aggrid = df_filtered[cols_display + ['index_original']]
+    gb = GridOptionsBuilder.from_dataframe(df_aggrid)
+    gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
+    gb.configure_column("Título", width=500); gb.configure_column("Autor", width=250); gb.configure_column("Orientador", width=250); gb.configure_column("Assuntos", width=350); gb.configure_column("Tipo de Documento", width=150); gb.configure_column("Ano", width=90)
+    gb.configure_selection(selection_mode="single", use_checkbox=True)
+    gb.configure_column("index_original", hide=True)
+    grid_opts = gb.build()
+    grid_response = AgGrid(df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED, enable_enterprise_modules=False, fit_columns_on_grid_load=False, key=st.session_state.grid_key)
+    st.divider()
+
+    selected_rows = grid_response.get("selected_rows")
+    tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
+    with tab_detalhes:
+        if selected_rows is not None and not selected_rows.empty:
+            detalhes = df.loc[selected_rows.iloc[0]['index_original']]
+            st.subheader(detalhes.get('Título', ''))
+            st.divider()
+            st.markdown("#### Assuntos"); st.write(detalhes.get('Assuntos', ''))
+            st.markdown("#### Resumo"); st.write(detalhes.get('Resumo_LLM', ''))
+            st.markdown("#### Link para Download")
+            link_pdf = detalhes.get('Link_PDF')
+            if link_pdf and isinstance(link_pdf, str): st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
+            else: st.warning("Nenhum link para download disponível.")
+        else:
+            st.info("Selecione um registro na tabela para ver os detalhes.")
+            
+    with tab_similares:
+        if not matriz_similaridade.any(): st.warning("Dados de similaridade não disponíveis.")
+        elif selected_rows is not None and not selected_rows.empty:
+            id_selecionado = selected_rows.iloc[0]['index_original']
+            num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1)
+            if st.session_state.get('selected_id') != id_selecionado or st.session_state.get('num_vizinhos_cache') != num_vizinhos:
+                if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
+                st.session_state.selected_id = id_selecionado
+                st.session_state.num_vizinhos_cache = num_vizinhos
+            fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
+            st.plotly_chart(fig, use_container_width=True)
+            df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
+            st.dataframe(df_similares, use_container_width=True, hide_index=True)
+            st.divider()
+            if st.button("Gerar Análise com IA 🧠", key="btn_analise"):
+                cache_key = (id_selecionado, num_vizinhos)
+                if cache_key in st.session_state.analysis_cache:
+                    st.toast("Reexibindo análise em cache. ⚡"); st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]
+                else:
+                    summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
+                    if not summaries_to_analyze.empty:
+                        with st.spinner('A IA está lendo e preparando a análise...'):
+                            analysis = get_ai_synthesis("\n\n---\n\n".join(summaries_to_analyze))
+                            st.session_state.analysis_result = analysis
+                            st.session_state.analysis_cache[cache_key] = analysis
+                    else:
+                        st.warning("Não há resumos para gerar análise."); st.session_state.analysis_result = ""
+            if 'analysis_result' in st.session_state and st.session_state.analysis_result:
+                with st.container(border=True):
+                    st.subheader("Análise Gerada por IA"); st.markdown(st.session_state.analysis_result)
+        else:
+            st.info("Selecione um registro para visualizar trabalhos similares.")
 
 def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     """Renderiza a página do Dashboard com visualizações sobre os dados."""
     st.title("Dashboard de Análise do Acervo")
     st.markdown("---")
     
-    # Gráfico 1: Top 20 Assuntos Mais Frequentes
     st.subheader("Top 20 Assuntos Mais Frequentes")
     todos_assuntos = [assunto for sublista in df['Assuntos_Processados'] for assunto in sublista]
     if todos_assuntos:
         contador_assuntos = Counter(todos_assuntos)
-        top_20_assuntos = contador_assuntos.most_common(20)
-        df_top20 = pd.DataFrame(top_20_assuntos, columns=['Assunto', 'Quantidade'])
-        fig_assuntos = px.bar(df_top20.sort_values(by='Quantidade', ascending=True), x='Quantidade', y='Assunto', orientation='h', title='Top 20 Assuntos Mais Frequentes', text='Quantidade', labels={'Assunto': 'Assunto', 'Quantidade': 'Número de Ocorrências'})
+        df_top20 = pd.DataFrame(contador_assuntos.most_common(20), columns=['Assunto', 'Quantidade'])
+        fig_assuntos = px.bar(df_top20.sort_values(by='Quantidade', ascending=True), x='Quantidade', y='Assunto', orientation='h', title='Top 20 Assuntos Mais Frequentes', text='Quantidade')
         fig_assuntos.update_traces(marker_color='#1f77b4', textposition='outside')
-        fig_assuntos.update_layout(yaxis=dict(tickmode='linear'), xaxis_title="Número de Ocorrências", yaxis_title=None, margin=dict(l=200, r=20, t=50, b=50), title_x=0.5)
+        fig_assuntos.update_layout(yaxis=dict(tickmode='linear'), xaxis_title="Ocorrências", yaxis_title=None, margin=dict(l=200, r=20, t=50, b=50), title_x=0.5)
         st.plotly_chart(fig_assuntos, use_container_width=True)
-    else:
-        st.warning("Não há dados de assuntos para exibir.")
     st.markdown("---")
 
-    # Gráfico 2: Produção Anual de Teses e Dissertações
     st.subheader("Produção Anual por Tipo de Documento")
     contagem_agrupada = df.groupby(['Ano', 'Tipo de Documento']).size().reset_index(name='Quantidade').sort_values('Ano')
     if not contagem_agrupada.empty:
-        fig_producao = px.bar(contagem_agrupada, x='Ano', y='Quantidade', color='Tipo de Documento', title='Produção Anual: Teses vs. Dissertações', labels={'Ano': 'Ano de Publicação', 'Quantidade': 'Número de Trabalhos', 'Tipo de Documento': 'Tipo de Documento'}, barmode='group')
-        fig_producao.update_layout(xaxis_title="Ano de Publicação", yaxis_title="Quantidade de Trabalhos", title_x=0.5, font=dict(family="Arial, sans-serif", size=12), legend_title_text='Legenda')
+        fig_producao = px.bar(contagem_agrupada, x='Ano', y='Quantidade', color='Tipo de Documento', title='Produção Anual: Teses vs. Dissertações', barmode='group')
+        fig_producao.update_layout(xaxis_title="Ano", yaxis_title="Quantidade", title_x=0.5, legend_title_text='Tipo')
         fig_producao.update_xaxes(type='category')
         st.plotly_chart(fig_producao, use_container_width=True)
-    else:
-        st.warning("Não há dados de produção anual para exibir.")
     st.markdown("---")
 
-    # Gráfico 3: Visualização de Clusters de Documentos
     st.subheader("Visualização de Clusters de Documentos (PCA + K-Means)")
     with st.expander("ℹ️ Como interpretar este gráfico?"):
-        st.markdown(""" (Texto explicativo completo mantido como antes) """)
+        st.markdown("""(Texto explicativo completo mantido como antes)""")
 
     # ###################################### #
     # ##      ALTERAÇÕES APLICADAS AQUI     ##
@@ -263,13 +365,14 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
         df_plot_3d = compute_clusters(embeddings, k_escolhido)
         df_plot_3d['Título'] = df['Título']
         df_plot_3d['Autor'] = df['Autor']
-        # A coluna 'cluster' agora é mantida como numérica para a escala de cor contínua
+        # Convertendo para string para garantir cores discretas
+        df_plot_3d['cluster'] = df_plot_3d['cluster'].astype(str)
 
         fig_3d = px.scatter_3d(
             df_plot_3d, x='pca1', y='pca2', z='pca3', color='cluster', hover_name='Título',
             hover_data={'Autor': True, 'cluster': True, 'pca1': False, 'pca2': False, 'pca3': False},
             title=f'Clusters de Documentos (k={k_escolhido})',
-            color_continuous_scale=px.colors.sequential.Viridis # Usando a escala Viridis
+            color_discrete_sequence=px.colors.sequential.Blues # Usando a escala de Azuis
         )
         
         fig_3d.update_traces(marker=dict(size=4, opacity=0.8))
