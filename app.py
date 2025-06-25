@@ -15,13 +15,13 @@ import openai
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Visualizador de Acervo Acadêmico v4",
-        page_icon="💡",
+        page_title="Visualizador de Acervo Acadêmico v5",
+        page_icon="🔍",
         layout="wide",
         initial_sidebar_state="expanded"
     )
 
-# ... (As outras funções: load_data, load_embeddings, calculate_similarity_matrix, get_ai_synthesis, generate_similarity_graph permanecem exatamente as mesmas) ...
+# ... (As outras funções: load_data, load_embeddings, etc., permanecem exatamente as mesmas) ...
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     """Carrega o arquivo CSV principal e retorna um DataFrame."""
@@ -72,7 +72,7 @@ def get_ai_synthesis(summaries: str) -> str:
         - [Termo 5]
         """
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Você é um assistente de pesquisa acadêmica."},
                 {"role": "user", "content": prompt}
@@ -157,7 +157,6 @@ def main():
     st.title("Visualizador de Acervo Acadêmico")
     st.markdown("Selecione uma linha na tabela para ver detalhes e trabalhos similares.")
 
-    # NOVO: Inicialização do cache de análises no session_state, se não existir
     if 'analysis_cache' not in st.session_state:
         st.session_state.analysis_cache = {}
 
@@ -171,8 +170,27 @@ def main():
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     df['index_original'] = df.index
     
+    # --- NOVO: BARRA DE BUSCA E LÓGICA DE FILTRAGEM ---
+    search_term = st.text_input(
+        "🔍 Buscar no Acervo",
+        placeholder="Digite termos do título, autor, assunto ou resumo...",
+        help="A busca é realizada em tempo real e não diferencia maiúsculas de minúsculas."
+    )
+
+    if search_term:
+        # Garante que as colunas de busca sejam do tipo string e lida com valores ausentes (NaN)
+        cols_to_search = ["Autor", "Título", "Assuntos", "Resumo_LLM"]
+        # Cria uma máscara booleana para cada coluna, combinando-as com OR (|)
+        mask = df[cols_to_search].fillna('').astype(str).apply(
+            lambda col: col.str.contains(search_term, case=False)
+        ).any(axis=1)
+        df_display = df[mask]
+    else:
+        df_display = df # Se a busca estiver vazia, exibe o DataFrame completo
+
+    # A AgGrid agora usará o DataFrame 'df_display' (completo ou filtrado)
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
-    df_aggrid = df[cols_display + ['index_original']]
+    df_aggrid = df_display[cols_display + ['index_original']]
 
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_selection(selection_mode="single", use_checkbox=True)
@@ -190,6 +208,7 @@ def main():
 
     with tab_detalhes:
         if selected_rows is not None and not selected_rows.empty:
+            # Importante: Usa o 'index_original' para buscar os detalhes no DataFrame *completo* (df)
             detalhes = df.loc[selected_rows.iloc[0]['index_original']]
             st.markdown("#### Assuntos")
             st.write(detalhes.get('Assuntos', 'Nenhum assunto listado.'))
@@ -202,7 +221,7 @@ def main():
             else:
                 st.warning("Nenhum link para download disponível.")
         else:
-            st.info("Selecione um registro na tabela acima para ver os detalhes.")
+            st.info("Selecione um registro na tabela (ou limpe a busca para ver mais opções).")
 
     with tab_similares:
         if embeddings.size == 0 or matriz_similaridade.size == 0:
@@ -216,7 +235,6 @@ def main():
                 "Número de vizinhos", min_value=1, max_value=10, value=5, step=1, help=texto_ajuda
             )
 
-            # AJUSTE: A lógica de reset agora considera também a mudança no slider
             if (st.session_state.get('selected_id') != id_selecionado or 
                 st.session_state.get('num_vizinhos_cache') != num_vizinhos):
                 if 'analysis_result' in st.session_state:
@@ -236,7 +254,6 @@ def main():
             if st.button("Gerar Análise com IA 🧠", key="btn_analise"):
                 cache_key = (id_selecionado, num_vizinhos)
                 
-                # AJUSTE: Lógica de cache para evitar novas chamadas à API
                 if cache_key in st.session_state.analysis_cache:
                     st.toast("Reexibindo análise previamente gerada. ⚡")
                     st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]
@@ -247,7 +264,6 @@ def main():
                         
                         analysis = get_ai_synthesis(full_text_summaries)
                         st.session_state.analysis_result = analysis
-                        # Salva o resultado no cache
                         st.session_state.analysis_cache[cache_key] = analysis
 
             if 'analysis_result' in st.session_state and st.session_state.analysis_result:
