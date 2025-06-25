@@ -239,42 +239,42 @@ def main():
     
     # ... (código da AgGrid e das abas de detalhes e similares) ...
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
-df_aggrid = df_display[cols_display + ['index_original']]
+    df_aggrid = df_display[cols_display + ['index_original']]
 
-# --- AJUSTE: CONFIGURAÇÃO AVANÇADA DAS COLUNAS ---
-gb = GridOptionsBuilder.from_dataframe(df_aggrid)
+    # --- AJUSTE: CONFIGURAÇÃO AVANÇADA DAS COLUNAS ---
+    gb = GridOptionsBuilder.from_dataframe(df_aggrid)
 
-# 1. Configurações padrão para TODAS as colunas
-gb.configure_default_column(
-    resizable=True,      # Permite que o usuário redimensione
-    wrapText=True,       # Quebra de linha automática
-    autoHeight=True,     # Altura da linha automática
-    suppressMenu=True,   # Oculta o menu de filtro do cabeçalho da coluna
-    sortable=True
-)
+    # 1. Configurações padrão para TODAS as colunas
+    gb.configure_default_column(
+        resizable=True,      # Permite que o usuário redimensione
+        wrapText=True,       # Quebra de linha automática
+        autoHeight=True,     # Altura da linha automática
+        suppressMenu=True,   # Oculta o menu de filtro do cabeçalho da coluna
+        sortable=True
+    )
 
-# 2. Configurações específicas para CADA coluna
-gb.configure_column("Título", width=500, minWidth=300)
-gb.configure_column("Autor", width=250, minWidth=150)
-gb.configure_column("Orientador", width=250, minWidth=150)
-gb.configure_column("Assuntos", width=350)
-gb.configure_column("Tipo de Documento", width=150)
-gb.configure_column("Ano", width=90, minWidth=70, maxWidth=100)
+    # 2. Configurações específicas para CADA coluna
+    gb.configure_column("Título", width=500, minWidth=300)
+    gb.configure_column("Autor", width=250, minWidth=150)
+    gb.configure_column("Orientador", width=250, minWidth=150)
+    gb.configure_column("Assuntos", width=350)
+    gb.configure_column("Tipo de Documento", width=150)
+    gb.configure_column("Ano", width=90, minWidth=70, maxWidth=100)
 
-# 3. Configurações da grade (seleção e coluna oculta)
-gb.configure_selection(selection_mode="single", use_checkbox=True)
-gb.configure_column("index_original", hide=True)
+    # 3. Configurações da grade (seleção e coluna oculta)
+    gb.configure_selection(selection_mode="single", use_checkbox=True)
+    gb.configure_column("index_original", hide=True)
 
-grid_opts = gb.build()
+    grid_opts = gb.build()
 
-grid_response = AgGrid(
-    df_aggrid, 
-    gridOptions=grid_opts, 
-    update_mode=GridUpdateMode.SELECTION_CHANGED,
-    enable_enterprise_modules=False,
-    # O fit_columns_on_grid_load é útil, mas pode ser removido se você preferir o controle manual
-    fit_columns_on_grid_load=False, 
-    key=st.session_state.grid_key)
+    grid_response = AgGrid(
+        df_aggrid, 
+        gridOptions=grid_opts, 
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        enable_enterprise_modules=False,
+        # O fit_columns_on_grid_load é útil, mas pode ser removido se você preferir o controle manual
+        fit_columns_on_grid_load=False, 
+        key=st.session_state.grid_key)
 
     st.divider()
     selected_rows = grid_response.get("selected_rows")
