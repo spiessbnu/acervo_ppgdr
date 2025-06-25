@@ -89,8 +89,14 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
         edge_label_trace['y'] += tuple([(y0 + y1) / 2])
         edge_label_trace['text'] += tuple([f"{edge[2]['weight']:.2f}"])
 
-    node_trace = go.Scatter(x=[], y=[], mode='markers+text', text=[], hovertemplate="%{hovertext}",
-                            marker=dict(color=[], size=[], line_width=2))
+    node_trace = go.Scatter(
+        x=[], y=[],
+        mode='markers+text',
+        text=[],
+        hovertext=[], # <-- A CORREÇÃO ESTÁ AQUI
+        hovertemplate="%{hovertext}",
+        marker=dict(color=[], size=[], line_width=2)
+    )
     
     cores_niveis = {0: 'crimson', 1: 'royalblue'}
     for node in G.nodes():
