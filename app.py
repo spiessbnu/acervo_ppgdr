@@ -288,7 +288,7 @@ def main():
     with col1:
         st.text_input("Busca simples", key="search_term", placeholder="Filtro por palavra-chave...")
     with col2:
-        st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema e pressione Enter.")
+        st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema, palavras ou uma frase para realizar uma busca inteligente! Pressione Enter para enviar.")
     with col3:
         st.button("Limpar Tudo 🧹", on_click=clear_searches, use_container_width=True, help="Limpa todas as buscas e filtros.")
 
