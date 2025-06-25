@@ -193,8 +193,30 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
         st.warning("Não há dados de produção anual para exibir.")
     st.markdown("---")
 
-    # Gráfico 3: Visualização de Clusters de Documentos
+    # --- Gráfico 3: Visualização de Clusters de Documentos ---
     st.subheader("Visualização de Clusters de Documentos (PCA + K-Means)")
+
+    # Adicionando o texto explicativo dentro de um expander
+    with st.expander("ℹ️ Como interpretar este gráfico?"):
+        st.markdown("""
+        Este gráfico organiza todos os documentos do acervo em um espaço 3D, agrupando-os por similaridade de conteúdo.
+
+        - **a) O que os eixos (PCA) representam?**
+          Os eixos `Componente Principal 1, 2 e 3` são o resultado de uma técnica de compressão de dados chamada PCA. Eles reduzem as centenas de dimensões semânticas de um texto a apenas três, para que possamos visualizá-los. **Documentos que estão próximos neste espaço 3D são mais similares em conteúdo** do que aqueles que estão distantes.
+
+        - **b) O que os clusters (cores) representam?**
+          Cada cor representa um "cluster", ou seja, um **grupo de documentos que o algoritmo identificou como sendo muito parecidos entre si**. É provável que os documentos de um mesmo cluster compartilhem os mesmos temas, conceitos ou abordagens.
+
+        - **c) Como interpretar o gráfico?**
+          Procure por grupos de cores (clusters) que estão densos e bem separados uns dos outros, pois isso indica tópicos distintos no acervo. Passe o mouse sobre um ponto para ver o título e o autor do trabalho, ajudando a entender o tema daquele cluster.
+
+        - **d) Como interagir com o gráfico?**
+          O gráfico é totalmente interativo:
+          - **Clique e arraste** para rotacionar.
+          - Use a **roda do mouse** para aplicar zoom.
+          - **Clique nos itens da legenda** à direita para ativar ou desativar a visualização de clusters específicos. Isso é útil para focar a análise em grupos de seu interesse.
+        """)
+    
     k_escolhido = st.slider("Selecione o número de clusters (k):", min_value=2, max_value=15, value=3, step=1, help="Escolha em quantos grupos os documentos devem ser divididos.")
     with st.spinner(f"Calculando {k_escolhido} clusters..."):
         df_plot_3d = compute_clusters(embeddings, k_escolhido)
