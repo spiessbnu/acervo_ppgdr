@@ -3,7 +3,7 @@
 # --------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, ColumnAutoSizeMode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 import numpy as np
 import networkx as nx
 import plotly.graph_objects as go
