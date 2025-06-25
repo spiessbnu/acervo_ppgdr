@@ -7,6 +7,8 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 import numpy as np
 import networkx as nx
 import plotly.graph_objects as go
+import plotly.express as px  # Adicionado para o novo gráfico
+from collections import Counter  # Adicionado para contar os assuntos
 from sklearn.metrics.pairwise import cosine_similarity
 import openai
 import uuid
@@ -31,15 +33,28 @@ def setup_page():
         initial_sidebar_state="expanded"
     )
 
-
 # --------------------------------------------------------------------------
 # FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO (MAIS ROBUSTAS)
 # --------------------------------------------------------------------------
+def safe_literal_eval(s):
+    """Função segura para converter string de lista em objeto lista."""
+    try:
+        return ast.literal_eval(s)
+    except (ValueError, SyntaxError, TypeError):
+        # Se a string for inválida ou vazia (NaN), retorna uma lista vazia
+        return []
+
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     """Carrega o arquivo CSV com tratamento de erro aprimorado."""
     try:
-        return pd.read_csv(path)
+        df = pd.read_csv(path)
+        # Garante que a coluna de assuntos processados seja criada ao carregar os dados
+        if 'Assuntos_Lista' in df.columns:
+            df['Assuntos_Processados'] = df['Assuntos_Lista'].apply(safe_literal_eval)
+        else:
+            df['Assuntos_Processados'] = [[] for _ in range(len(df))]
+        return df
     except FileNotFoundError:
         st.error(f"Arquivo de dados não encontrado: '{path}'. Verifique se o arquivo está no diretório correto.")
         return None
@@ -100,17 +115,10 @@ def remover_acentos(texto: str) -> str:
 @st.cache_data
 def prepare_subject_list(_df: pd.DataFrame) -> list:
     """Extrai, limpa, unifica e ordena os assuntos para o dropdown."""
-    if 'Assuntos_Lista' not in _df.columns:
+    if 'Assuntos_Processados' not in _df.columns:
         return ['-- Selecione um Assunto --']
 
-    def safe_literal_eval(s):
-        try:
-            return ast.literal_eval(s)
-        except (ValueError, SyntaxError):
-            return []
-
-    assuntos_processados = _df['Assuntos_Lista'].apply(safe_literal_eval)
-    todos_assuntos = [assunto for sublista in assuntos_processados for assunto in sublista]
+    todos_assuntos = [assunto for sublista in _df['Assuntos_Processados'] for assunto in sublista]
     lista_unica = sorted(list(set(todos_assuntos)), key=lambda texto: remover_acentos(texto.lower()))
     return ['-- Selecione um Assunto --'] + lista_unica
 
@@ -284,8 +292,6 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     
     selected_subject = st.session_state.get('subject_filter', subject_options[0])
     if selected_subject != '-- Selecione um Assunto --':
-        if 'Assuntos_Processados' not in df_filtered.columns:
-             df_filtered['Assuntos_Processados'] = df_filtered['Assuntos_Lista'].apply(lambda s: ast.literal_eval(s) if isinstance(s, str) else [])
         mask_subject = df_filtered['Assuntos_Processados'].apply(lambda lista: selected_subject in lista)
         df_filtered = df_filtered[mask_subject]
     
@@ -392,11 +398,60 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         else:
             st.info("Selecione um registro na tabela para visualizar trabalhos similares.")
 
-def render_page_dashboard():
-    """Renderiza a página do Dashboard (placeholder)."""
-    st.title("Dashboard")
-    st.info("🚧 EM CONSTRUÇÃO 🚧")
-    st.write("Esta área será dedicada a visualizações e estatísticas gerais sobre o acervo.")
+def render_page_dashboard(df: pd.DataFrame):
+    """Renderiza a página do Dashboard com visualizações sobre os dados."""
+    st.title("Dashboard de Análise do Acervo")
+    st.markdown("---")
+    
+    # --- Gráfico 1: Top 20 Assuntos Mais Frequentes ---
+    st.subheader("Top 20 Assuntos Mais Frequentes")
+
+    # Criar uma lista única com todos os assuntos (achatar a lista de listas)
+    todos_assuntos = [assunto for sublista in df['Assuntos_Processados'] for assunto in sublista]
+
+    if not todos_assuntos:
+        st.warning("Não há dados de assuntos para exibir.")
+        return
+
+    # Contar as 20 ocorrências mais comuns
+    contador_assuntos = Counter(todos_assuntos)
+    top_20_assuntos = contador_assuntos.most_common(20)
+
+    # Criar um DataFrame com os 20 assuntos mais comuns para plotagem
+    df_top20 = pd.DataFrame(top_20_assuntos, columns=['Assunto', 'Quantidade'])
+
+    # Criação do Gráfico de Barras Horizontais com Plotly Express
+    fig = px.bar(
+        df_top20.sort_values(by='Quantidade', ascending=True),
+        x='Quantidade',
+        y='Assunto',
+        orientation='h',
+        title='Top 20 Assuntos Mais Frequentes nos Trabalhos',
+        text='Quantidade',
+        labels={'Assunto': 'Assunto', 'Quantidade': 'Número de Ocorrências'}
+    )
+
+    # Personalizar a aparência do gráfico
+    fig.update_traces(
+        marker_color='#1f77b4',
+        textposition='outside'
+    )
+
+    # Ajustes finos no layout para melhor legibilidade
+    fig.update_layout(
+        yaxis=dict(tickmode='linear'),
+        xaxis_title="Número de Ocorrências",
+        yaxis_title=None,
+        margin=dict(l=200, r=20, t=50, b=50), # Aumenta a margem esquerda para caber os textos
+        title_x=0.5
+    )
+
+    # Exibir o gráfico no Streamlit
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("---")
+    # Futuras visualizações podem ser adicionadas aqui
+
 
 def render_page_sobre():
     """Renderiza a página Sobre (placeholder)."""
@@ -453,7 +508,7 @@ def main():
     if st.session_state.page == "Consultas":
         render_page_consultas(df, embeddings, matriz_similaridade, subject_options)
     elif st.session_state.page == "Dashboard":
-        render_page_dashboard()
+        render_page_dashboard(df)
     elif st.session_state.page == "Sobre":
         render_page_sobre()
 
