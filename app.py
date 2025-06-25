@@ -25,8 +25,8 @@ EMBEDDINGS_PATH = "openai_embeddings_concatenado_large.npy"
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Visualizador de Acervo Acadêmico Final",
-        page_icon="✨",
+        page_title="Dissertações e Teses PPGDR v1",
+        page_icon="📚",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -179,30 +179,21 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
     edge_trace = go.Scatter(x=[], y=[], line=dict(width=1, color='#888'), hoverinfo='none', mode='lines')
     edge_label_trace = go.Scatter(x=[], y=[], mode='text', text=[], textposition='middle center', hoverinfo='none', textfont=dict(size=9, color='firebrick'))
     for edge in G.edges(data=True):
-        x0, y0 = pos[edge[0]]
-        x1, y1 = pos[edge[1]]
-        edge_trace['x'] += (x0, x1, None)
-        edge_trace['y'] += (y0, y1, None)
-        edge_label_trace['x'] += ((x0 + x1) / 2,)
-        edge_label_trace['y'] += ((y0 + y1) / 2,)
+        x0, y0 = pos[edge[0]]; x1, y1 = pos[edge[1]]
+        edge_trace['x'] += (x0, x1, None); edge_trace['y'] += (y0, y1, None)
+        edge_label_trace['x'] += ((x0 + x1) / 2,); edge_label_trace['y'] += ((y0 + y1) / 2,)
         edge_label_trace['text'] += (f"{edge[2]['weight']:.2f}",)
 
     node_trace = go.Scatter(x=[], y=[], mode='markers+text', text=[], hovertext=[], hovertemplate="%{hovertext}", marker=dict(color=[], size=[], line_width=2))
     cores_niveis = {0: 'crimson', 1: 'royalblue'}
     for node in G.nodes():
-        x, y = pos[node]
-        info = G.nodes[node]
-        level = info['level']
-        node_trace['x'] += (x,)
-        node_trace['y'] += (y,)
+        x, y = pos[node]; info = G.nodes[node]; level = info['level']
+        node_trace['x'] += (x,); node_trace['y'] += (y,)
         node_trace['marker']['color'] += (cores_niveis[level],)
-        if level == 0:
-            size = 35
-            similarity_text = "Nó Central"
+        if level == 0: size = 35; similarity_text = "Nó Central"
         else:
             similarity_score = matriz_similaridade[node, id_documento_inicial]
-            size = 15 + (similarity_score ** 3 * 40)
-            similarity_text = f"Similaridade: {similarity_score:.3f}"
+            size = 15 + (similarity_score ** 3 * 40); similarity_text = f"Similaridade: {similarity_score:.3f}"
         node_trace['marker']['size'] += (size,)
         hover_text = f"<b>{info['title']}</b><br>Autor: {info['author']}<br>{similarity_text}"
         node_trace['hovertext'] += (hover_text,)
@@ -216,9 +207,7 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
         data=[edge_trace, node_trace, edge_label_trace],
         layout=go.Layout(
             title={'text': f'<br>Rede de Similaridade para: "{df.iloc[id_documento_inicial]["Título"][:60]}..."', 'font': {'size': 16}},
-            showlegend=False,
-            hovermode='closest',
-            margin=dict(b=20, l=5, r=5, t=40),
+            showlegend=False, hovermode='closest', margin=dict(b=20, l=5, r=5, t=40),
             xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
             yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
         )
@@ -229,8 +218,7 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
 @st.cache_data(show_spinner=False)
 def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="text-embedding-3-large") -> list:
     """Gera o embedding para a query e retorna uma lista ordenada de índices de documentos."""
-    if not query_text.strip():
-        return []
+    if not query_text.strip(): return []
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         query_embedding = client.embeddings.create(input=[query_text], model=model).data[0].embedding
@@ -238,8 +226,7 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
         ranked_indices = np.argsort(-similarities)
         return [i for i in ranked_indices if similarities[i] > 0.2][:20]
     except Exception as e:
-        st.error(f"Erro na busca inteligente: {e}")
-        return []
+        st.error(f"Erro na busca inteligente: {e}"); return []
 
 
 # --------------------------------------------------------------------------
@@ -247,7 +234,7 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
 # --------------------------------------------------------------------------
 def main():
     setup_page()
-    st.title("Visualizador de Acervo Acadêmico")
+    st.title("Dissertações e Teses PPGDR v1")
 
     # --- CARREGAMENTO E VALIDAÇÃO DOS DADOS ---
     df = load_data(CSV_DATA_PATH)
@@ -260,7 +247,6 @@ def main():
     # --- INICIALIZAÇÃO E PREPARAÇÃO ---
     subject_options = prepare_subject_list(df)
 
-    # AJUSTE: Inicialização do session_state de forma correta e segura
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
     if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
@@ -273,7 +259,7 @@ def main():
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     df['index_original'] = df.index
 
-    st.markdown("Use as ferramentas de busca e filtros para explorar o acervo.")
+    #st.markdown("Use as ferramentas de busca e filtros para explorar o acervo.")
     st.subheader("Ferramentas de Busca e Filtro")
 
     def clear_searches():
@@ -284,15 +270,21 @@ def main():
         if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
         if 'selected_id' in st.session_state: del st.session_state['selected_id']
 
-    col1, col2, col3 = st.columns([2, 2, 1])
-    with col1:
+    # --- AJUSTE DE LAYOUT FINAL ---
+    # Primeira linha com as buscas por texto
+    search_col1, search_col2 = st.columns(2)
+    with search_col1:
         st.text_input("Busca simples", key="search_term", placeholder="Filtro por palavra-chave...")
-    with col2:
-        st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema, palavras ou uma frase para realizar uma busca inteligente! Pressione Enter para enviar.")
-    with col3:
-        st.button("Limpar Tudo 🧹", on_click=clear_searches, use_container_width=True, help="Limpa todas as buscas e filtros.")
+    with search_col2:
+        st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema e pressione Enter.")
 
-    st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
+    # Segunda linha com o filtro de assunto e o botão de limpar
+    filter_col1, filter_col2 = st.columns([3, 1])
+    with filter_col1:
+        st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
+    with filter_col2:
+        st.button("Limpar Tudo 🧹", on_click=clear_searches, use_container_width=True, help="Limpa todas as buscas e filtros.")
+    # --- FIM DO AJUSTE DE LAYOUT ---
 
     df_filtered = df.copy()
     if st.session_state.semantic_term:
@@ -309,7 +301,7 @@ def main():
         mask = df_filtered[cols_to_search].fillna('').astype(str).apply(lambda col: col.str.contains(st.session_state.search_term, case=False)).any(axis=1)
         df_filtered = df_filtered[mask]
     
-    selected_subject = st.session_state.subject_filter
+    selected_subject = st.session_state.get('subject_filter', subject_options[0])
     if selected_subject != '-- Selecione um Assunto --':
         if 'Assuntos_Processados' not in df_filtered.columns:
              df_filtered['Assuntos_Processados'] = df_filtered['Assuntos_Lista'].apply(lambda s: ast.literal_eval(s) if isinstance(s, str) else [])
@@ -319,7 +311,6 @@ def main():
     df_display = df_filtered
     st.divider()
     
-    # Lógica para resetar a seleção da tabela ao aplicar um filtro
     current_filter_state = (st.session_state.search_term, st.session_state.semantic_term, st.session_state.subject_filter)
     if st.session_state.get('last_filter_state') != current_filter_state:
         st.session_state.grid_key = str(uuid.uuid4())
