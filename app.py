@@ -94,15 +94,57 @@ def prepare_subject_list(_df: pd.DataFrame) -> list:
     todos_assuntos = [assunto for sublista in assuntos_processados for assunto in sublista]
     lista_unica = sorted(list(set(todos_assuntos)), key=lambda texto: remover_acentos(texto.lower()))
     return ['-- Selecione um Assunto --'] + lista_unica
+    
+# --------------------------------------------------------------------------
+# FUNÇÃO DE IA PARA GERAR SÍNTESE (VERSÃO APRIMORADA)
+# --------------------------------------------------------------------------
 def get_ai_synthesis(summaries: str) -> str:
+    """
+    Chama a API da OpenAI com um prompt aprimorado para gerar uma síntese analítica dos textos.
+    """
     try:
+        # A chave da API é lida dos secrets do Streamlit, configurado no ambiente de deploy
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
-        prompt_template = "Você é um assistente de pesquisa... {summaries} ... **Síntese Temática:**\n[...]\n\n**Termos Comuns:**\n- [...]"
+
+        # --- PROMPT APRIMORADO ---
+        # Foco em análise, síntese e conexões, com formato de saída estrito.
+        prompt_template = """
+        Você é um especialista em análise de conteúdo e síntese acadêmica.
+        Sua missão é analisar o conjunto de resumos de trabalhos acadêmicos fornecido abaixo.
+        Leia todos os textos e identifique as conexões, os padrões e os temas centrais que os unem.
+        Não resuma cada trabalho individualmente. Em vez disso, crie uma análise unificada que revele o panorama geral da pesquisa.
+
+        CONTEXTO (Resumos a serem analisados):
+        ---
+        {summaries}
+        ---
+
+        Sua resposta deve seguir rigorosamente o seguinte formato, sem adicionar nenhuma introdução, saudação ou texto extra:
+
+        **Síntese Analítica:**
+        [Aqui, escreva um parágrafo denso e analítico que conecte as ideias principais dos textos. Destaque as convergências, possíveis divergências e a contribuição coletiva do conjunto para o campo de estudo.]
+
+        **Temas Principais:**
+        [Aqui, liste de 3 a 5 dos temas mais proeminentes e recorrentes encontrados nos textos, em formato de lista com marcadores. Seja conciso.]
+        """
+        
         prompt = prompt_template.format(summaries=summaries)
-        response = client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "system", "content": "Você é um assistente de pesquisa acadêmica."}, {"role": "user", "content": prompt}], temperature=0.5)
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Você é um especialista em análise de conteúdo e síntese acadêmica. Responda em português do Brasil."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.6, # Um pouco mais de criatividade para uma melhor análise
+        )
         return response.choices[0].message.content
+
     except Exception as e:
-        st.error(f"Erro ao contatar a API de IA: {e}"); return "Não foi possível gerar a análise."
+        # Fornece um erro mais informativo no log do Streamlit para debug
+        st.error(f"Ocorreu um erro ao chamar a API da OpenAI: {e}")
+        return "Falha ao gerar a análise. Verifique a configuração da chave de API ou se o serviço está disponível."
+
 def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num_vizinhos):
     nos_da_rede = {id_documento_inicial}; vizinhos_l1 = np.argsort(matriz_similaridade[id_documento_inicial])[-num_vizinhos-1:-1][::-1]; nos_da_rede.update(vizinhos_l1)
     G = nx.Graph(); 
