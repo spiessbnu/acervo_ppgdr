@@ -81,7 +81,7 @@ def validate_data(df: pd.DataFrame, embeddings: np.ndarray) -> bool:
     if df is None or embeddings is None:
         return False
 
-    required_cols = ['Título', 'Autor', 'Assuntos_Lista', 'Resumo_LLM']
+    required_cols = ['Título', 'Autor', 'Assuntos_Lista', 'Resumo_LLM', 'Ano', 'Tipo de Documento']
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         st.error(f"Erro de Integridade: Coluna(s) necessária(s) não encontrada(s) no CSV: {', '.join(missing_cols)}")
@@ -406,51 +406,67 @@ def render_page_dashboard(df: pd.DataFrame):
     # --- Gráfico 1: Top 20 Assuntos Mais Frequentes ---
     st.subheader("Top 20 Assuntos Mais Frequentes")
 
-    # Criar uma lista única com todos os assuntos (achatar a lista de listas)
     todos_assuntos = [assunto for sublista in df['Assuntos_Processados'] for assunto in sublista]
 
-    if not todos_assuntos:
+    if todos_assuntos:
+        contador_assuntos = Counter(todos_assuntos)
+        top_20_assuntos = contador_assuntos.most_common(20)
+        df_top20 = pd.DataFrame(top_20_assuntos, columns=['Assunto', 'Quantidade'])
+
+        fig_assuntos = px.bar(
+            df_top20.sort_values(by='Quantidade', ascending=True),
+            x='Quantidade',
+            y='Assunto',
+            orientation='h',
+            title='Top 20 Assuntos Mais Frequentes nos Trabalhos',
+            text='Quantidade',
+            labels={'Assunto': 'Assunto', 'Quantidade': 'Número de Ocorrências'}
+        )
+        fig_assuntos.update_traces(marker_color='#1f77b4', textposition='outside')
+        fig_assuntos.update_layout(
+            yaxis=dict(tickmode='linear'),
+            xaxis_title="Número de Ocorrências",
+            yaxis_title=None,
+            margin=dict(l=200, r=20, t=50, b=50),
+            title_x=0.5
+        )
+        st.plotly_chart(fig_assuntos, use_container_width=True)
+    else:
         st.warning("Não há dados de assuntos para exibir.")
-        return
 
-    # Contar as 20 ocorrências mais comuns
-    contador_assuntos = Counter(todos_assuntos)
-    top_20_assuntos = contador_assuntos.most_common(20)
+    st.markdown("---")
 
-    # Criar um DataFrame com os 20 assuntos mais comuns para plotagem
-    df_top20 = pd.DataFrame(top_20_assuntos, columns=['Assunto', 'Quantidade'])
+    # --- Gráfico 2: Produção Anual de Teses e Dissertações ---
+    st.subheader("Produção Anual por Tipo de Documento")
 
-    # Criação do Gráfico de Barras Horizontais com Plotly Express
-    fig = px.bar(
-        df_top20.sort_values(by='Quantidade', ascending=True),
-        x='Quantidade',
-        y='Assunto',
-        orientation='h',
-        title='Top 20 Assuntos Mais Frequentes nos Trabalhos',
-        text='Quantidade',
-        labels={'Assunto': 'Assunto', 'Quantidade': 'Número de Ocorrências'}
-    )
+    contagem_agrupada = df.groupby(['Ano', 'Tipo de Documento']).size().reset_index(name='Quantidade')
+    contagem_agrupada = contagem_agrupada.sort_values('Ano')
 
-    # Personalizar a aparência do gráfico
-    fig.update_traces(
-        marker_color='#1f77b4',
-        textposition='outside'
-    )
-
-    # Ajustes finos no layout para melhor legibilidade
-    fig.update_layout(
-        yaxis=dict(tickmode='linear'),
-        xaxis_title="Número de Ocorrências",
-        yaxis_title=None,
-        margin=dict(l=200, r=20, t=50, b=50), # Aumenta a margem esquerda para caber os textos
-        title_x=0.5
-    )
-
-    # Exibir o gráfico no Streamlit
-    st.plotly_chart(fig, use_container_width=True)
+    if not contagem_agrupada.empty:
+        fig_producao = px.bar(
+            contagem_agrupada,
+            x='Ano',
+            y='Quantidade',
+            color='Tipo de Documento',
+            title='Produção Anual: Teses vs. Dissertações',
+            labels={'Ano': 'Ano de Publicação',
+                    'Quantidade': 'Número de Trabalhos',
+                    'Tipo de Documento': 'Tipo de Documento'},
+            barmode='group'
+        )
+        fig_producao.update_layout(
+            xaxis_title="Ano de Publicação",
+            yaxis_title="Quantidade de Trabalhos",
+            title_x=0.5,
+            font=dict(family="Arial, sans-serif", size=12),
+            legend_title_text='Legenda'
+        )
+        fig_producao.update_xaxes(type='category')
+        st.plotly_chart(fig_producao, use_container_width=True)
+    else:
+        st.warning("Não há dados de produção anual para exibir.")
     
     st.markdown("---")
-    # Futuras visualizações podem ser adicionadas aqui
 
 
 def render_page_sobre():
@@ -475,14 +491,12 @@ def main():
     """, unsafe_allow_html=True)
 
     # --- NAVEGAÇÃO NA BARRA LATERAL COM BOTÕES ---
-    # Inicializa o estado da página se não existir
     if 'page' not in st.session_state:
         st.session_state.page = "Consultas"
 
     with st.sidebar:
         st.title("📚 PPGDR Explorer")
         
-        # Botões para navegação que alteram o estado da sessão
         if st.button("Consultas", use_container_width=True):
             st.session_state.page = "Consultas"
         if st.button("Dashboard", use_container_width=True):
@@ -490,21 +504,27 @@ def main():
         if st.button("Sobre", use_container_width=True):
             st.session_state.page = "Sobre"
     
-    # --- CARREGAMENTO E VALIDAÇÃO DOS DADOS (feito uma vez) ---
-    df = load_data(CSV_DATA_PATH)
+    # --- CARREGAMENTO E VALIDAÇÃO DOS DADOS ---
+    # Renomeando a coluna antes de passar para as funções
+    df_raw = load_data(CSV_DATA_PATH)
+    if df_raw is not None:
+        df = df_raw.rename(columns={"Tipo_Documento": "Tipo de Documento"})
+    else:
+        st.error("Falha ao carregar os dados. A aplicação não pode continuar.")
+        st.stop()
+        
     embeddings = load_embeddings(EMBEDDINGS_PATH)
 
     if not validate_data(df, embeddings):
         st.warning("A aplicação não pode continuar devido a erros nos dados de entrada. Por favor, corrija os problemas acima.")
         st.stop()
     
-    # --- PREPARAÇÃO DOS DADOS (feito uma vez) ---
+    # --- PREPARAÇÃO DOS DADOS ---
     matriz_similaridade = calculate_similarity_matrix(embeddings)
     subject_options = prepare_subject_list(df)
-    df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     df['index_original'] = df.index
 
-    # --- ROTEAMENTO DE PÁGINAS BASEADO NO ESTADO DA SESSÃO ---
+    # --- ROTEAMENTO DE PÁGINAS ---
     if st.session_state.page == "Consultas":
         render_page_consultas(df, embeddings, matriz_similaridade, subject_options)
     elif st.session_state.page == "Dashboard":
