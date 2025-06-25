@@ -73,19 +73,15 @@ def main():
     # 6. Lógica para exibir os detalhes da linha selecionada
     selected_rows = grid_response.get("selected_rows")
 
-    # NOVO: Cria um container de abas para organizar a seção de detalhes
     tab_detalhes, = st.tabs(["Detalhes"])
 
     with tab_detalhes:
-        # CORREÇÃO: Verifica se selected_rows não é None antes de checar se está vazio.
-        # Isso corrige o AttributeError no carregamento inicial.
         if selected_rows is not None and not selected_rows.empty:
             selected_data_row = selected_rows.iloc[0]
             original_index = selected_data_row.get('index_original')
             detalhes = df.loc[original_index]
 
-            st.subheader("Detalhes do Registro")
-            st.markdown("---")
+            # A linha st.subheader("Detalhes do Registro") e o st.markdown("---") foram removidos daqui.
 
             # 1. Assuntos
             st.markdown("#### Assuntos")
