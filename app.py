@@ -8,7 +8,7 @@ import numpy as np
 import networkx as nx
 import plotly.graph_objects as go
 from sklearn.metrics.pairwise import cosine_similarity
-import openai  # Nova biblioteca
+import openai
 
 # --------------------------------------------------------------------------
 # FUNÇÃO 1: Configuração da página do Streamlit
@@ -55,9 +55,7 @@ def calculate_similarity_matrix(_embeddings: np.ndarray) -> np.ndarray:
 def get_ai_synthesis(summaries: str) -> str:
     """Chama a API da OpenAI para gerar uma síntese dos textos."""
     try:
-        # Configura a chave da API a partir dos secrets do Streamlit
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
-
         prompt = f"""
         Você é um assistente de pesquisa acadêmica altamente qualificado. Sua tarefa é analisar um conjunto de resumos de trabalhos acadêmicos e gerar uma análise concisa.
 
@@ -78,7 +76,6 @@ def get_ai_synthesis(summaries: str) -> str:
         - [Termo 4]
         - [Termo 5]
         """
-
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -88,7 +85,6 @@ def get_ai_synthesis(summaries: str) -> str:
             temperature=0.5,
         )
         return response.choices[0].message.content
-
     except Exception as e:
         st.error(f"Erro ao contatar a API de IA: {e}")
         return "Não foi possível gerar a análise. Verifique a configuração da chave de API ou tente novamente."
@@ -114,11 +110,9 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
         G.add_edge(id_documento_inicial, vizinho_id, weight=similaridade)
             
     pos = nx.spring_layout(G, k=0.8, iterations=50, seed=42)
-
     edge_trace = go.Scatter(x=[], y=[], line=dict(width=1, color='#888'), hoverinfo='none', mode='lines')
     edge_label_trace = go.Scatter(x=[], y=[], mode='text', text=[], textposition='middle center',
                                   hoverinfo='none', textfont=dict(size=9, color='firebrick'))
-
     for edge in G.edges(data=True):
         x0, y0 = pos[edge[0]]
         x1, y1 = pos[edge[1]]
@@ -127,22 +121,18 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
         edge_label_trace['x'] += tuple([(x0 + x1) / 2])
         edge_label_trace['y'] += tuple([(y0 + y1) / 2])
         edge_label_trace['text'] += tuple([f"{edge[2]['weight']:.2f}"])
-
     node_trace = go.Scatter(
         x=[], y=[], mode='markers+text', text=[], hovertext=[],
         hovertemplate="%{hovertext}", marker=dict(color=[], size=[], line_width=2)
     )
-    
     cores_niveis = {0: 'crimson', 1: 'royalblue'}
     for node in G.nodes():
         x, y = pos[node]
         info = G.nodes[node]
         level = info['level']
-        
         node_trace['x'] += tuple([x])
         node_trace['y'] += tuple([y])
         node_trace['marker']['color'] += tuple([cores_niveis[level]])
-        
         if level == 0:
             size = 35
             similarity_text = "Nó Central"
@@ -150,27 +140,21 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
             similarity_score = matriz_similaridade[node, id_documento_inicial]
             size = 15 + (similarity_score ** 3 * 40)
             similarity_text = f"Similaridade: {similarity_score:.3f}"
-
         node_trace['marker']['size'] += tuple([size])
         hover_text = f"<b>{info['title']}</b><br>Autor: {info['author']}<br>{similarity_text}"
         node_trace['hovertext'] += tuple([hover_text])
         label_texto = info['title'][:30] + '...' if len(info['title']) > 30 else info['title']
         node_trace['text'] += tuple([label_texto])
-
     node_trace.textposition = 'top center'
     node_trace.textfont = dict(size=9, color='#333')
-
     fig = go.Figure(data=[edge_trace, node_trace, edge_label_trace],
                  layout=go.Layout(
-                    title={
-                        'text': f'<br>Rede de Similaridade para: "{df.iloc[id_documento_inicial]["Título"][:60]}..."',
-                        'font': {'size': 16}
-                    },
+                    title={'text': f'<br>Rede de Similaridade para: "{df.iloc[id_documento_inicial]["Título"][:60]}..."',
+                           'font': {'size': 16}},
                     showlegend=False, hovermode='closest', margin=dict(b=20,l=5,r=5,t=40),
                     xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                     yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
                     )
-    # Retorna também os IDs dos nós para usar na chamada da IA
     return fig, nos_da_rede
 
 # --------------------------------------------------------------------------
@@ -203,11 +187,9 @@ def main():
         df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED,
         enable_enterprise_modules=False, fit_columns_on_grid_load=True, key='data_grid'
     )
-
     st.divider()
 
     selected_rows = grid_response.get("selected_rows")
-
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
 
     with tab_detalhes:
@@ -231,9 +213,14 @@ def main():
             st.warning("Não foi possível carregar os dados de similaridade. Verifique os arquivos.")
         elif selected_rows is not None and not selected_rows.empty:
             id_selecionado = selected_rows.iloc[0]['index_original']
-            
+
+            # NOVO: Lógica para resetar a análise da IA ao trocar de seleção
+            if 'selected_id' not in st.session_state or st.session_state.selected_id != id_selecionado:
+                if 'analysis_result' in st.session_state:
+                    del st.session_state['analysis_result']
+                st.session_state.selected_id = id_selecionado
+
             st.caption("Ajuste o controle abaixo para definir a quantidade de trabalhos similares a serem exibidos no grafo.")
-            
             texto_ajuda = (
                 "Este indicador de similaridade é calculado com base em embeddings de texto, que representam os resumos como vetores numéricos."
                 " Utilizamos modelos da OpenAI para comparar esses vetores por similaridade de cosseno, estimando a proximidade de conteúdo entre os textos."
@@ -242,28 +229,26 @@ def main():
                 "Número de vizinhos", min_value=1, max_value=10, value=5, step=1, help=texto_ajuda
             )
 
-            # Gera o grafo e captura os IDs dos nós exibidos
             fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
             st.plotly_chart(fig, use_container_width=True)
+            
+            # NOVO: Exibe a tabela com os documentos do grafo
+            st.write("Documentos incluídos no grafo:")
+            df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
+            st.dataframe(df_similares, use_container_width=True, hide_index=True)
 
             st.divider()
 
-            # Lógica para o botão e exibição da análise
             if st.button("Gerar Análise com IA 🧠", key="btn_analise"):
                 with st.spinner('A IA está lendo os resumos e preparando a análise... Por favor, aguarde.'):
-                    # Coleta os resumos dos nós exibidos no grafo
                     summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
                     full_text_summaries = "\n\n---\n\n".join(summaries_to_analyze)
-                    
-                    # Chama a função de IA e armazena o resultado no estado da sessão
                     st.session_state.analysis_result = get_ai_synthesis(full_text_summaries)
 
-            # Exibe o resultado se ele existir no estado da sessão
             if 'analysis_result' in st.session_state and st.session_state.analysis_result:
                 with st.container(border=True):
                     st.subheader("Análise Gerada por IA")
                     st.markdown(st.session_state.analysis_result)
-
         else:
             st.info("Selecione um registro na tabela para visualizar trabalhos similares.")
 
