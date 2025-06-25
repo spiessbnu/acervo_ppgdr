@@ -72,7 +72,9 @@ def validate_data(df: pd.DataFrame, embeddings: np.ndarray) -> bool:
         )
         return False
     
-    st.success("Arquivos de dados carregados e validados com sucesso!")
+    # AJUSTE: A mensagem de sucesso agora é um "toast" temporário que some sozinho.
+    st.toast("Arquivos de dados carregados e validados!", icon="✅")
+    
     return True
 
 @st.cache_data
