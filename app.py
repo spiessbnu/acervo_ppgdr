@@ -21,7 +21,9 @@ def setup_page():
         initial_sidebar_state="expanded"
     )
 
-# ... (As outras funções: load_data, load_embeddings, etc., permanecem as mesmas) ...
+# --------------------------------------------------------------------------
+# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO COM CACHE
+# --------------------------------------------------------------------------
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     """Carrega o arquivo CSV principal e retorna um DataFrame."""
@@ -47,19 +49,39 @@ def calculate_similarity_matrix(_embeddings: np.ndarray) -> np.ndarray:
         return cosine_similarity(_embeddings)
     return np.array([])
 
+# --------------------------------------------------------------------------
+# FUNÇÃO DE IA PARA GERAR SÍNTESE
+# --------------------------------------------------------------------------
 def get_ai_synthesis(summaries: str) -> str:
     """Chama a API da OpenAI para gerar uma síntese dos textos."""
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
-        prompt = f"""
-        Você é um assistente de pesquisa acadêmica. Analise os resumos e gere uma resposta no formato:
-        **Síntese Temática:**\n[Parágrafo único]\n\n**Termos Comuns:**\n- [Termo 1]\n- [Termo 2]\n- [Termo 3]...
+        prompt_template = """
+        Você é um assistente de pesquisa acadêmica altamente qualificado. Sua tarefa é analisar um conjunto de resumos de trabalhos acadêmicos e gerar uma análise concisa.
+
+        Com base nos seguintes resumos:
+        ---
+        {summaries}
+        ---
+
+        Por favor, gere uma resposta estritamente no seguinte formato:
+
+        **Síntese Temática:**
+        [Um parágrafo coeso que resume os principais temas, metodologias e conclusões encontrados no conjunto de textos.]
+
+        **Termos Comuns:**
+        - [Termo 1]
+        - [Termo 2]
+        - [Termo 3]
+        - [Termo 4]
+        - [Termo 5]
         """
+        prompt = prompt_template.format(summaries=summaries)
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": "Você é um assistente de pesquisa acadêmica."},
-                {"role": "user", "content": prompt.format(summaries=summaries)}
+                {"role": "user", "content": prompt}
             ],
             temperature=0.5,
         )
@@ -68,8 +90,11 @@ def get_ai_synthesis(summaries: str) -> str:
         st.error(f"Erro ao contatar a API de IA: {e}")
         return "Não foi possível gerar a análise."
 
+# --------------------------------------------------------------------------
+# FUNÇÃO PARA GERAR O GRAFO DE SIMILARIDADE
+# --------------------------------------------------------------------------
 def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num_vizinhos):
-    # (Esta função permanece inalterada)
+    """Gera um grafo de similaridade e retorna a figura e os IDs dos nós."""
     nos_da_rede = {id_documento_inicial}
     vizinhos_l1 = np.argsort(matriz_similaridade[id_documento_inicial])[-num_vizinhos-1:-1][::-1]
     nos_da_rede.update(vizinhos_l1)
@@ -114,8 +139,10 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)))
     return fig, nos_da_rede
 
-# --- NOVO: FUNÇÃO DE BUSCA SEMÂNTICA ---
-@st.cache_data(show_spinner=False) # O spinner será controlado manualmente
+# --------------------------------------------------------------------------
+# FUNÇÃO DE BUSCA SEMÂNTICA
+# --------------------------------------------------------------------------
+@st.cache_data(show_spinner=False)
 def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="text-embedding-3-large") -> list:
     """Gera o embedding para a query e retorna uma lista ordenada de índices de documentos."""
     if not query_text.strip():
@@ -125,7 +152,6 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
         query_embedding = client.embeddings.create(input=[query_text], model=model).data[0].embedding
         similarities = cosine_similarity([query_embedding], _document_embeddings).flatten()
         ranked_indices = np.argsort(-similarities)
-        # Retorna apenas os índices, a ordenação já está implícita
         return [i for i in ranked_indices if similarities[i] > 0.2]
     except Exception as e:
         st.error(f"Erro na busca inteligente: {e}")
@@ -140,6 +166,7 @@ def main():
     st.markdown("Use a busca para encontrar trabalhos e selecione um na tabela para ver detalhes e similares.")
 
     if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
+    
     df = load_data("dados_finais_com_resumo_llm.csv")
     embeddings = load_embeddings("openai_embeddings_concatenado_large.npy")
     matriz_similaridade = calculate_similarity_matrix(embeddings)
@@ -149,7 +176,6 @@ def main():
     df = df.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     df['index_original'] = df.index
     
-    # --- NOVO: BUSCAS LADO A LADO ---
     st.subheader("Ferramentas de Busca")
     col1, col2 = st.columns(2)
     with col1:
@@ -165,7 +191,6 @@ def main():
             help="Descreva um tema e pressione Enter. A IA buscará por significado."
         )
     
-    # --- LÓGICA DE FILTRAGEM COM PRIORIDADE PARA A BUSCA INTELIGENTE ---
     if semantic_search_term:
         with st.spinner("Buscando por significado... A IA está processando seu pedido."):
             ranked_indices = search_semantic(semantic_search_term, embeddings)
@@ -174,7 +199,7 @@ def main():
             st.success(f"Exibindo os {len(df_display)} resultados mais relevantes para '{semantic_search_term}'.")
         else:
             st.warning("Nenhum resultado relevante encontrado para a busca inteligente.")
-            df_display = pd.DataFrame(columns=df.columns) # Tabela vazia
+            df_display = pd.DataFrame(columns=df.columns)
     elif simple_search_term:
         cols_to_search = ["Autor", "Título", "Assuntos", "Resumo_LLM"]
         mask = df[cols_to_search].fillna('').astype(str).apply(
@@ -199,9 +224,7 @@ def main():
     )
     st.divider()
 
-    # O resto do código permanece o mesmo, operando sobre o que for selecionado na AgGrid
     selected_rows = grid_response.get("selected_rows")
-    # ... (código das abas 'Detalhes' e 'Trabalhos Similares' sem alterações) ...
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
 
     with tab_detalhes:
@@ -216,4 +239,58 @@ def main():
             else:
                 st.warning("Nenhum link para download disponível.")
         else:
-            st.info("Selecione um registro na tabela para ver
+            st.info("Selecione um registro na tabela para ver os detalhes.")
+
+    with tab_similares:
+        if embeddings.size == 0 or matriz_similaridade.size == 0:
+            st.warning("Não foi possível carregar os dados de similaridade.")
+        elif selected_rows is not None and not selected_rows.empty:
+            id_selecionado = selected_rows.iloc[0]['index_original']
+            st.caption("Ajuste a quantidade de trabalhos similares a serem exibidos.")
+            texto_ajuda = (
+                "Este indicador de similaridade é calculado com base em embeddings de texto, que representam os resumos como vetores numéricos."
+                " Utilizamos modelos da OpenAI para comparar esses vetores por similaridade de cosseno, estimando a proximidade de conteúdo entre os textos."
+            )
+            num_vizinhos = st.slider(
+                "Número de vizinhos", min_value=1, max_value=10, value=5, step=1, help=texto_ajuda
+            )
+
+            if (st.session_state.get('selected_id') != id_selecionado or 
+                st.session_state.get('num_vizinhos_cache') != num_vizinhos):
+                if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
+                st.session_state.selected_id = id_selecionado
+                st.session_state.num_vizinhos_cache = num_vizinhos
+            
+            fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.write("Documentos incluídos no grafo:")
+            df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
+            st.dataframe(df_similares, use_container_width=True, hide_index=True)
+            st.divider()
+
+            if st.button("Gerar Análise com IA 🧠", key="btn_analise"):
+                cache_key = (id_selecionado, num_vizinhos)
+                if cache_key in st.session_state.analysis_cache:
+                    st.toast("Reexibindo análise previamente gerada. ⚡")
+                    st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]
+                else:
+                    with st.spinner('A IA está lendo e preparando a análise...'):
+                        summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
+                        full_text_summaries = "\n\n---\n\n".join(summaries_to_analyze)
+                        analysis = get_ai_synthesis(full_text_summaries)
+                        st.session_state.analysis_result = analysis
+                        st.session_state.analysis_cache[cache_key] = analysis
+
+            if 'analysis_result' in st.session_state and st.session_state.analysis_result:
+                with st.container(border=True):
+                    st.subheader("Análise Gerada por IA")
+                    st.markdown(st.session_state.analysis_result)
+        else:
+            st.info("Selecione um registro na tabela para visualizar trabalhos similares.")
+
+# --------------------------------------------------------------------------
+# Ponto de entrada do script
+# --------------------------------------------------------------------------
+if __name__ == "__main__":
+    main()
