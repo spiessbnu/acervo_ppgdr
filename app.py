@@ -363,7 +363,7 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     if todos_assuntos:
         contador_assuntos = Counter(todos_assuntos)
         df_top20 = pd.DataFrame(contador_assuntos.most_common(20), columns=['Assunto', 'Quantidade'])
-        fig_assuntos = px.bar(df_top20.sort_values(by='Quantidade', ascending=True), x='Quantidade', y='Assunto', orientation='h', #title='Top 20 Assuntos Mais Frequentes', 
+        fig_assuntos = px.bar(df_top20.sort_values(by='Quantidade', ascending=True), x='Quantidade', y='Assunto', orientation='h', title=' ', 
                               text='Quantidade')
         fig_assuntos.update_traces(marker_color='#1f77b4', textposition='outside')
         fig_assuntos.update_layout(yaxis=dict(tickmode='linear'), xaxis_title="Ocorrências", yaxis_title=None, margin=dict(l=200, r=20, t=50, b=50), title_x=0.5)
@@ -374,7 +374,7 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     st.subheader("Produção Anual por Tipo de Documento")
     contagem_agrupada = df.groupby(['Ano', 'Tipo de Documento']).size().reset_index(name='Quantidade').sort_values('Ano')
     if not contagem_agrupada.empty:
-        fig_producao = px.bar(contagem_agrupada, x='Ano', y='Quantidade', color='Tipo de Documento', #title='Produção Anual: Teses vs. Dissertações', 
+        fig_producao = px.bar(contagem_agrupada, x='Ano', y='Quantidade', color='Tipo de Documento', title=' ', 
                               barmode='group')
         fig_producao.update_layout(xaxis_title="Ano", yaxis_title="Quantidade", title_x=0.5, legend_title_text='Tipo')
         fig_producao.update_xaxes(type='category')
