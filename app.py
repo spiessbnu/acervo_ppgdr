@@ -464,7 +464,7 @@ def main():
         st.divider()
         
         # Imagem no rodapé da barra lateral
-        st.image("NET-01.png", use_column_width='auto')
+        st.image("NET-01.png", use_container_width=True)
     
     df_raw = load_data(CSV_DATA_PATH)
     if df_raw is None: st.error("Falha ao carregar dados."); st.stop()
