@@ -29,7 +29,7 @@ EMBEDDINGS_PATH = "openai_embeddings_concatenado_large.npy"
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Dissertações e Teses PPGDR v1",
+        page_title="Acervo de Dissertações e Teses PPGDR v1",
         page_icon="📚",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -449,7 +449,7 @@ def main():
     st.markdown("""<style>[data-testid="stSidebar"] {background-color: #0F5EDD;}</style>""", unsafe_allow_html=True)
     if 'page' not in st.session_state: st.session_state.page = "Consultas"
     with st.sidebar:
-        st.title("📚 PPGDR Explorer")
+        st.title("📚 Acervo PPGDR")
         if st.button("Consultas", use_container_width=True): st.session_state.page = "Consultas"
         if st.button("Dashboard", use_container_width=True): st.session_state.page = "Dashboard"
         if st.button("Sobre", use_container_width=True): st.session_state.page = "Sobre"
