@@ -447,41 +447,41 @@ def render_page_sobre():
 # FUNÇÃO PRINCIPAL DO APLICATIVO (ROTEADOR)
 # --------------------------------------------------------------------------
 def main():
-    setup_page()
-    st.markdown("""<style>[data-testid="stSidebar"] {background-color: #0F5EDD;}</style>""", unsafe_allow_html=True)
-    if 'page' not in st.session_state: st.session_state.page = "Consultas"
+    setup_page()
+    st.markdown("""<style>[data-testid="stSidebar"] {background-color: #0F5EDD;}</style>""", unsafe_allow_html=True)
+    if 'page' not in st.session_state: st.session_state.page = "Consultas"
 
-    with st.sidebar:
-        # Título ajustado para negrito e cor branca usando markdown
-        st.markdown("<h1 style='color:white;'><b>📚 Acervo PPGDR</b></h1>", unsafe_allow_html=True)
+    with st.sidebar:
+        # Título ajustado para negrito e cor branca usando markdown
+        st.markdown("<h1 style='color:white;'><b>📚 Acervo PPGDR</b></h1>", unsafe_allow_html=True)
 
-        # Botões de navegação
-        if st.button("Consultas", use_container_width=True): st.session_state.page = "Consultas"
-        if st.button("Dashboard", use_container_width=True): st.session_state.page = "Dashboard"
-        if st.button("Sobre", use_container_width=True): st.session_state.page = "Sobre"
+        # Botões de navegação
+        if st.button("Consultas", use_container_width=True): st.session_state.page = "Consultas"
+        if st.button("Dashboard", use_container_width=True): st.session_state.page = "Dashboard"
+        if st.button("Sobre", use_container_width=True): st.session_state.page = "Sobre"
 
-        # Adicionando um divisor para separar os botões da imagem
-        st.divider()
-        
-        # Imagem no rodapé da barra lateral
-        st.image("NET-01.png", use_column_width='auto')
-    
-    df_raw = load_data(CSV_DATA_PATH)
-    if df_raw is None: st.error("Falha ao carregar dados."); st.stop()
-    df = df_raw.rename(columns={"Tipo_Documento": "Tipo de Documento"})
-    embeddings = load_embeddings(EMBEDDINGS_PATH)
-    if not validate_data(df, embeddings): st.stop()
-    
-    matriz_similaridade = calculate_similarity_matrix(embeddings)
-    subject_options = prepare_subject_list(df)
-    df['index_original'] = df.index
+        # Adicionando um divisor para separar os botões da imagem
+        st.divider()
+        
+        # Imagem no rodapé da barra lateral
+        st.image("NET-01.png", use_column_width='auto')
+    
+    df_raw = load_data(CSV_DATA_PATH)
+    if df_raw is None: st.error("Falha ao carregar dados."); st.stop()
+    df = df_raw.rename(columns={"Tipo_Documento": "Tipo de Documento"})
+    embeddings = load_embeddings(EMBEDDINGS_PATH)
+    if not validate_data(df, embeddings): st.stop()
+    
+    matriz_similaridade = calculate_similarity_matrix(embeddings)
+    subject_options = prepare_subject_list(df)
+    df['index_original'] = df.index
 
-    if st.session_state.page == "Consultas":
-        render_page_consultas(df, embeddings, matriz_similaridade, subject_options)
-    elif st.session_state.page == "Dashboard":
-        render_page_dashboard(df, embeddings)
-    elif st.session_state.page == "Sobre":
-        render_page_sobre()
-
+    if st.session_state.page == "Consultas":
+        render_page_consultas(df, embeddings, matriz_similaridade, subject_options)
+    elif st.session_state.page == "Dashboard":
+        render_page_dashboard(df, embeddings)
+    elif st.session_state.page == "Sobre":
+        render_page_sobre()
+        
 if __name__ == "__main__":
     main()
