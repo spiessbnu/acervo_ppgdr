@@ -444,22 +444,8 @@ import streamlit as st
 def render_page_sobre():
     """Renderiza a página 'Sobre' com informações de autoria e um guia de uso."""
     
-    st.title("Guia de Uso e Informações")
-
-    # --- SEÇÃO DE INFORMAÇÕES DE AUTORIA ---
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.caption("""
-            **Autoria do Aplicativo:** Maiko R. Spiess  
-            **Concepção e Curadoria:** Equipe NET  
-            **Fonte:** Biblioteca Universitária FURB
-            **Data da Base de Conhecimento:** 06/2025            
-        """)
-    with col2:
-        st.link_button("Visite nosso site!", "https://www.net-dr.org", use_container_width=True)
-    
-    st.divider()
-    
+    st.title("Sobre o projeto")
+   
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
     Ela utiliza técnicas de Processamento de Linguagem Natural e Inteligência Artificial para facilitar a descoberta de conhecimento e a análise de tendências.
@@ -505,6 +491,21 @@ def render_page_sobre():
         - **Gráficos de Frequência:** Veja quais são os assuntos mais pesquisados e a produção anual de teses e dissertações.
         - **Mapa de Clusters 3D:** Explore um gráfico 3D interativo que agrupa **todos** os documentos do acervo por similaridade. Gire, aproxime e clique nas legendas para investigar os grandes temas de pesquisa.
         """)
+
+    st.divider()
+
+    # --- SEÇÃO DE INFORMAÇÕES DE AUTORIA ---
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.caption("""
+            **Autoria do Aplicativo:** Maiko R. Spiess  
+            **Concepção:** Equipe NET  
+            **Fonte:** Biblioteca Universitária FURB
+            **Data da Base de Conhecimento:** 06/2025            
+        """)
+    with col2:
+        st.link_button("Visite nosso site!", "https://www.net-dr.org", use_container_width=True)
+    
 
 
 # --------------------------------------------------------------------------
