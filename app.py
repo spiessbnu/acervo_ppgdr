@@ -333,7 +333,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
             st.dataframe(df_similares, use_container_width=True, hide_index=True)
             st.divider()
-            if st.button("Gerar Análise da rede de trabalhos com IA 🧠", key="btn_analise"):
+            if st.button("Gerar análise da rede de trabalhos com IA 🧠", key="btn_analise"):
                 cache_key = (id_selecionado, num_vizinhos)
                 if cache_key in st.session_state.analysis_cache:
                     st.toast("Reexibindo análise em cache. ⚡"); st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]
