@@ -440,8 +440,56 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
 
 
 def render_page_sobre():
-    st.title("Sobre o Projeto")
-    st.info("🚧 EM CONSTRUÇÃO 🚧")
+    """Renderiza a página 'Sobre' com um tutorial em formato de cards."""
+    
+    st.title("Sobre o Projeto e Guia de Uso")
+    
+    st.markdown("""
+    Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
+    Ela utiliza técnicas de Processamento de Linguagem Natural e Inteligência Artificial para facilitar a descoberta de conhecimento e a análise de tendências.
+
+    Abaixo está um guia rápido para você aproveitar ao máximo as funcionalidades disponíveis.
+    """)
+    
+    st.divider()
+
+    # --- CARD 1: EXPLORAÇÃO BÁSICA ---
+    with st.container(border=True):
+        st.subheader("🔎 1. Explore o Acervo na Tela de Consultas")
+        st.markdown("""
+        O ponto de partida é a página **Consultas**. Nela, você pode:
+        - **Buscar por Palavra-Chave:** Use a *Busca simples* para encontrar trabalhos por título, autor ou termos no resumo.
+        - **Filtrar por Assunto:** Refine sua busca selecionando um dos assuntos oficiais na lista.
+        - **Navegar na Tabela:** Os resultados aparecem na tabela interativa. **Clique na caixa de seleção** de uma linha para ver seus detalhes e ativar as análises de similaridade.
+        """)
+
+    # --- CARD 2: DESCOBERTA COM IA ---
+    with st.container(border=True):
+        st.subheader("🧠 2. Descubra Conexões com a IA")
+        st.markdown("""
+        Após selecionar um trabalho na tabela, a aba **Trabalhos Similares** é ativada. Nela, você encontra:
+        - **Busca Inteligente:** Em vez da busca simples, descreva um tema na *Busca inteligente* e a IA encontrará os trabalhos mais relevantes com base no significado.
+        - **Grafo de Similaridade:** Um mapa visual que mostra o trabalho selecionado (nó central) e os documentos mais próximos a ele em conteúdo. O tamanho dos nós e a proximidade indicam o grau de similaridade.
+        """)
+
+    # --- CARD 3: SÍNTESE ANALÍTICA ---
+    with st.container(border=True):
+        st.subheader("📄✨ 3. Gere uma Análise Unificada")
+        st.markdown("""
+        Ainda na aba **Trabalhos Similares**, após o grafo ser exibido, você pode ir além:
+        - **Clique em "Gerar Análise com IA 🧠"**: A aplicação enviará os resumos dos trabalhos do grafo para a IA.
+        - **Receba uma Síntese:** A IA não irá resumir cada trabalho individualmente. Em vez disso, ela criará uma **análise coesa**, identificando os temas centrais, as conexões e o panorama geral daquele grupo de pesquisas.
+        """)
+
+    # --- CARD 4: VISÃO GERAL NO DASHBOARD ---
+    with st.container(border=True):
+        st.subheader("📊 4. Visualize o Panorama no Dashboard")
+        st.markdown("""
+        Quer entender o acervo como um todo? Acesse a página **Dashboard**. Lá você encontrará:
+        - **Gráficos de Frequência:** Veja quais são os assuntos mais pesquisados e a produção anual de teses e dissertações.
+        - **Mapa de Clusters 3D:** Explore um gráfico 3D interativo que agrupa **todos** os documentos do acervo por similaridade. Gire, aproxime e clique nas legendas para investigar os grandes temas de pesquisa.
+        """)
+
 
 # --------------------------------------------------------------------------
 # FUNÇÃO PRINCIPAL DO APLICATIVO (ROTEADOR)
