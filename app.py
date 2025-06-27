@@ -439,10 +439,26 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
         st.plotly_chart(fig_3d, use_container_width=True)
 
 
+import streamlit as st
+
 def render_page_sobre():
-    """Renderiza a página 'Sobre' com um tutorial em formato de cards."""
+    """Renderiza a página 'Sobre' com informações de autoria e um guia de uso."""
     
-    st.title("Sobre o Projeto e Guia de Uso")
+    st.title("Guia de Uso e Informações")
+
+    # --- SEÇÃO DE INFORMAÇÕES DE AUTORIA ---
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.caption("""
+            **Autoria do Aplicativo:** Maiko R. Spiess  
+            **Concepção e Curadoria:** Equipe NET  
+            **Fonte:** Biblioteca Universitária FURB
+            **Data da Base de Conhecimento:** 06/2025            
+        """)
+    with col2:
+        st.link_button("Visite nosso site!", "https://www.net-dr.org", use_container_width=True)
+    
+    st.divider()
     
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
@@ -477,7 +493,7 @@ def render_page_sobre():
         st.subheader("📄✨ 3. Gere uma Análise Unificada")
         st.markdown("""
         Ainda na aba **Trabalhos Similares**, após o grafo ser exibido, você pode ir além:
-        - **Clique em "Gerar Análise com IA 🧠"**: A aplicação enviará os resumos dos trabalhos do grafo para a IA.
+        - **Clique em "Gerar análise da rede de trabalhos com IA 🧠"**: A aplicação enviará os resumos dos trabalhos do grafo para a IA.
         - **Receba uma Síntese:** A IA não irá resumir cada trabalho individualmente. Em vez disso, ela criará uma **análise coesa**, identificando os temas centrais, as conexões e o panorama geral daquele grupo de pesquisas.
         """)
 
