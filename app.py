@@ -449,6 +449,7 @@ def render_page_sobre():
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
     Ela utiliza técnicas de Processamento de Linguagem Natural e Inteligência Artificial para facilitar a descoberta de conhecimento e a análise de tendências.
+    **Versão 1.0 - 06/25**
 
     Abaixo está um guia rápido para você aproveitar ao máximo as funcionalidades disponíveis.
     """)
@@ -501,6 +502,7 @@ def render_page_sobre():
             **Autoria do Aplicativo:** Maiko R. Spiess  
             **Concepção:** Equipe NET  
             **Fonte:** Biblioteca Universitária FURB
+            
             **Data da Base de Conhecimento:** 06/2025            
         """)
     with col2:
