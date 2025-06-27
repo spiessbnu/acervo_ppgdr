@@ -254,9 +254,9 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
 
     search_col1, search_col2 = st.columns(2)
     with search_col1:
-        st.text_input("Busca simples", key="search_term", placeholder="Filtro por palavra-chave...")
+        st.text_input("Busca simples", key="search_term", placeholder="Filtro simples por palavra-chave...", help="Busca por temas exatos: autor, assuntos, palavras-chave e termos nos resumos. Pressione Enter.")
     with search_col2:
-        st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema e pressione Enter.")
+        st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema em palavras, tópicos ou frases e pressione Enter. O sistema retornará resultados com temas correlatos.")
     filter_col1, filter_col2 = st.columns([3, 1])
     with filter_col1:
         st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
@@ -333,7 +333,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
             st.dataframe(df_similares, use_container_width=True, hide_index=True)
             st.divider()
-            if st.button("Gerar Análise com IA 🧠", key="btn_analise"):
+            if st.button("Gerar Análise da rede de trabalhos com IA 🧠", key="btn_analise"):
                 cache_key = (id_selecionado, num_vizinhos)
                 if cache_key in st.session_state.analysis_cache:
                     st.toast("Reexibindo análise em cache. ⚡"); st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]
