@@ -256,7 +256,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     with search_col1:
         st.text_input("Busca simples", key="search_term", placeholder="Filtro simples por palavra-chave...", help="Busca por temas exatos: autor, assuntos, palavras-chave e termos nos resumos. Pressione Enter.")
     with search_col2:
-        st.text_input("Busca inteligente (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema em palavras, tópicos ou frases e pressione Enter. O sistema retornará resultados com temas correlatos.")
+        st.text_input("Busca semântica (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema em palavras, tópicos ou frases e pressione Enter. O sistema retornará resultados com temas correlatos.")
     filter_col1, filter_col2 = st.columns([3, 1])
     with filter_col1:
         st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
