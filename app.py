@@ -177,7 +177,7 @@ def get_ai_synthesis(summaries: str) -> str:
         Sua resposta deve seguir rigorosamente o seguinte formato, sem adicionar nenhuma introdução, saudação ou texto extra:
 
         **Síntese Analítica:**
-        [Aqui, escreva um parágrafo denso e analítico que conecte as ideias principais dos textos. Destaque as convergências, possíveis divergências e a contribuição coletiva do conjunto para o campo de estudo.]
+        [Aqui, escreva um parágrafo denso e analítico que connecte as ideias principais dos textos. Destaque as convergências, possíveis divergências e a contribuição coletiva do conjunto para o campo de estudo.]
 
         **Temas Principais:**
         [Aqui, liste de 3 a 5 dos temas mais proeminentes e recorrentes encontrados nos textos, em formato de lista com marcadores. Seja conciso.]
@@ -319,28 +319,68 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         if match:
             pre_selected_rows_list = match
 
+    # --- seleção (retrocompatível 0.3.x e 1.x) ---
     gb.configure_selection(
-        selection_mode="single", 
+        selection_mode="single",
         use_checkbox=True,
         pre_selected_rows=pre_selected_rows_list
     )
-
     gb.configure_column("index_original", hide=True)
     grid_opts = gb.build()
-    grid_response = AgGrid(df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED, enable_enterprise_modules=False, fit_columns_on_grid_load=False, key=st.session_state.grid_key)
+
+    # Chamada ao AgGrid compatível com 1.x (update_on) e 0.3.x (update_mode)
+    aggrid_kwargs = dict(
+        gridOptions=grid_opts,
+        enable_enterprise_modules=False,
+        fit_columns_on_grid_load=False,
+        key=st.session_state.grid_key
+    )
+    try:
+        # v1.x: dispara rerun quando a seleção muda
+        grid_response = AgGrid(
+            df_aggrid,
+            update_on=['selectionChanged'],
+            **aggrid_kwargs
+        )
+    except TypeError:
+        # v0.3.x: API antiga
+        grid_response = AgGrid(
+            df_aggrid,
+            update_mode=GridUpdateMode.SELECTION_CHANGED,
+            **aggrid_kwargs
+        )
+
     st.divider()
 
-    selected_rows = grid_response.get("selected_rows")
-    if selected_rows is not None and not selected_rows.empty:
-        newly_selected_index = selected_rows.iloc[0]['index_original']
+    # Normaliza o retorno da seleção para um DataFrame
+    def _extract_selected_rows(resp):
+        # v1.x: objeto AgGridReturn com atributo .selected_rows
+        if hasattr(resp, "selected_rows"):
+            rows = resp.selected_rows
+        # v0.3.x: dict com chave "selected_rows" (ou legado "selected")
+        elif isinstance(resp, dict):
+            rows = resp.get("selected_rows", resp.get("selected", []))
+        else:
+            rows = []
+        # Converte lista de dicts -> DataFrame (ou vazio)
+        try:
+            sel_df = pd.DataFrame(rows)
+            return sel_df if not sel_df.empty else pd.DataFrame()
+        except Exception:
+            return pd.DataFrame()
+
+    selected_df = _extract_selected_rows(grid_response)
+
+    if not selected_df.empty:
+        newly_selected_index = int(selected_df.iloc[0]['index_original'])
         if st.session_state.get('selected_doc_index') != newly_selected_index:
             st.session_state.selected_doc_index = newly_selected_index
-            if 'analysis_result' in st.session_state:
-                del st.session_state['analysis_result']
+            st.session_state.pop('analysis_result', None)
             st.rerun()
-    elif selected_rows is not None and selected_rows.empty and st.session_state.get('selected_doc_index') is not None:
-         st.session_state.selected_doc_index = None
-         st.rerun()
+    else:
+        if st.session_state.get('selected_doc_index') is not None:
+            st.session_state.selected_doc_index = None
+            st.rerun()
 
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
     
