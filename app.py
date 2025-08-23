@@ -333,7 +333,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     grid_response = AgGrid(
         df_aggrid,
         gridOptions=grid_opts,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        update_on=["selectionChanged"],  # <- novo gatilho
         enable_enterprise_modules=False,
         fit_columns_on_grid_load=False,
         key=st.session_state.grid_key
