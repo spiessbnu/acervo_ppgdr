@@ -307,8 +307,10 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
 
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
     with tab_detalhes:
-        if selected_rows is not None and not selected_rows.empty:
-            detalhes = df.loc[selected_rows.iloc[0]['index_original']]
+        if selected_rows is not None and len(selected_rows) > 0:
+            idx_original = selected_rows[0]['index_original']
+            detalhes = df.loc[idx_original]
+            
             st.subheader(detalhes.get('Título', ''))
             st.divider()
             st.markdown("#### Assuntos"); st.write(detalhes.get('Assuntos', ''))
