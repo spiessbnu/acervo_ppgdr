@@ -300,7 +300,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     gb.configure_selection(selection_mode="single", use_checkbox=True)
     gb.configure_column("index_original", hide=True)
     grid_opts = gb.build()
-    grid_response = AgGrid(df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED, enable_enterprise_modules=False, fit_columns_on_grid_load=False, key=st.session_state.grid_key)
+    grid_response = AgGrid(df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED, enable_enterprise_modules=False, fit_columns_on_grid_load=True, key=st.session_state.grid_key)    
     st.divider()
 
     selected_rows = grid_response.get("selected_rows")
