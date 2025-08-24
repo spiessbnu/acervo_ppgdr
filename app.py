@@ -295,45 +295,63 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
     df_aggrid = df_filtered[cols_display + ['index_original']]
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
-    gb.configure_default_column(resizable=True, wrapText=True, autoHeight=False, suppressMenu=True, sortable=True)
+    gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
     gb.configure_column("Título", width=500); gb.configure_column("Autor", width=250); gb.configure_column("Orientador", width=250); gb.configure_column("Assuntos", width=350); gb.configure_column("Tipo de Documento", width=150); gb.configure_column("Ano", width=90)
     gb.configure_selection(selection_mode="single", use_checkbox=True)
     gb.configure_column("index_original", hide=True)
     grid_opts = gb.build()
-    grid_response = AgGrid(
-    df_aggrid,
-    gridOptions=grid_opts,
-    update_mode=GridUpdateMode.SELECTION_CHANGED,
-    enable_enterprise_modules=False,
-    fit_columns_on_grid_load=False,
-    key=st.session_state.grid_key
-)
+    grid_response = AgGrid(df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED, enable_enterprise_modules=False, fit_columns_on_grid_load=False, key=st.session_state.grid_key)
+    st.divider()
 
-st.divider()
+    selected_rows = grid_response.selected_rows
 
-# agora acessa como propriedade
-selected_rows = grid_response.selected_rows  
-
-tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
-
-with tab_detalhes:
-    if selected_rows is not None and len(selected_rows) > 0:
-        # selected_rows é lista de dicts, então precisa adaptar
-        idx_original = selected_rows[0]['index_original']
-        detalhes = df.loc[idx_original]
-
-        st.subheader(detalhes.get('Título', ''))
-        st.divider()
-        st.markdown("#### Assuntos"); st.write(detalhes.get('Assuntos', ''))
-        st.markdown("#### Resumo"); st.write(detalhes.get('Resumo_LLM', ''))
-        st.markdown("#### Link para Download")
-        link_pdf = detalhes.get('Link_PDF')
-        if link_pdf and isinstance(link_pdf, str):
-            st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
+    tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
+    with tab_detalhes:
+        if selected_rows is not None and not selected_rows.empty:
+            detalhes = df.loc[selected_rows.iloc[0]['index_original']]
+            st.subheader(detalhes.get('Título', ''))
+            st.divider()
+            st.markdown("#### Assuntos"); st.write(detalhes.get('Assuntos', ''))
+            st.markdown("#### Resumo"); st.write(detalhes.get('Resumo_LLM', ''))
+            st.markdown("#### Link para Download")
+            link_pdf = detalhes.get('Link_PDF')
+            if link_pdf and isinstance(link_pdf, str): st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
+            else: st.warning("Nenhum link para download disponível.")
         else:
-            st.warning("Nenhum link para download disponível.")
-    else:
-        st.info("Selecione um registro na tabela para ver os detalhes.")
+            st.info("Selecione um registro na tabela para ver os detalhes.")
+            
+    with tab_similares:
+        if not matriz_similaridade.any(): st.warning("Dados de similaridade não disponíveis.")
+        elif selected_rows is not None and not selected_rows.empty:
+            id_selecionado = selected_rows.iloc[0]['index_original']
+            num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1)
+            if st.session_state.get('selected_id') != id_selecionado or st.session_state.get('num_vizinhos_cache') != num_vizinhos:
+                if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
+                st.session_state.selected_id = id_selecionado
+                st.session_state.num_vizinhos_cache = num_vizinhos
+            fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
+            st.plotly_chart(fig, use_container_width=True)
+            df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
+            st.dataframe(df_similares, use_container_width=True, hide_index=True)
+            st.divider()
+            if st.button("Gerar análise da rede de trabalhos com IA 🧠", key="btn_analise"):
+                cache_key = (id_selecionado, num_vizinhos)
+                if cache_key in st.session_state.analysis_cache:
+                    st.toast("Reexibindo análise em cache. ⚡"); st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]
+                else:
+                    summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
+                    if not summaries_to_analyze.empty:
+                        with st.spinner('A IA está lendo e preparando a análise...'):
+                            analysis = get_ai_synthesis("\n\n---\n\n".join(summaries_to_analyze))
+                            st.session_state.analysis_result = analysis
+                            st.session_state.analysis_cache[cache_key] = analysis
+                    else:
+                        st.warning("Não há resumos para gerar análise."); st.session_state.analysis_result = ""
+            if 'analysis_result' in st.session_state and st.session_state.analysis_result:
+                with st.container(border=True):
+                    st.subheader("Análise Gerada por IA"); st.markdown(st.session_state.analysis_result)
+        else:
+            st.info("Selecione um registro para visualizar trabalhos similares.")
 
 def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     """Renderiza a página do Dashboard com visualizações sobre os dados."""
