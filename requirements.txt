@@ -1,17 +1,19 @@
 # Arquivo de dependências para o projeto PPGDR Explorer
 
 # Core da aplicação web e componentes
-streamlit
-streamlit-aggrid
+streamlit==1.35.0
+streamlit-aggrid==0.3.5
 
 # Manipulação de dados e computação numérica
-pandas
-numpy
+pandas==2.2.2
+numpy==1.26.4
+# Pyarrow é uma dependência importante para performance com Pandas/AgGrid
+pyarrow==16.1.0
 
 # Geração de grafos e visualizações
-networkx
-plotly
+networkx==3.3
+plotly==5.22.0
 
 # Machine Learning e IA
-scikit-learn
-openai
+scikit-learn==1.5.0
+openai==1.35.0
