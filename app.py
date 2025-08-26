@@ -8,7 +8,13 @@ import unicodedata
 import ast
 from collections import Counter
 
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+from st_aggrid import (
+    AgGrid,
+    GridOptionsBuilder,
+    GridUpdateMode,
+    DataReturnMode,
+    JsCode,
+)
 import networkx as nx
 import plotly.graph_objects as go
 import plotly.express as px
@@ -225,7 +231,6 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     # --- Estado ---
     if 'selected_rows_cache' not in st.session_state:
         st.session_state.selected_rows_cache = pd.DataFrame()
-
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
     if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
@@ -295,16 +300,21 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
 
     # Monta DF para a grid, com coluna de seleção booleana
     df_aggrid = df_filtered[cols_display + ['index_original']].copy()
-    df_aggrid[SELECAO_COL] = False
-    # se já havia item selecionado, reflete na coluna booleana
+    if SELECAO_COL not in df_aggrid.columns:
+        df_aggrid[SELECAO_COL] = False
+
+    # Se já havia item selecionado, reflete na coluna booleana
     if not st.session_state.selected_rows_cache.empty:
         prev_idx = st.session_state.selected_rows_cache.iloc[0]['index_original']
         df_aggrid.loc[df_aggrid['index_original'] == prev_idx, SELECAO_COL] = True
 
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
-    # NÃO usar a seleção nativa por checkbox; toda seleção é a coluna booleana
-    gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
-    # larguras
+
+    # Colunas padrão
+    gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True,
+                                suppressMenu=True, sortable=True)
+
+    # Larguras
     if "Título" in df_aggrid.columns: gb.configure_column("Título", width=500)
     if "Autor" in df_aggrid.columns: gb.configure_column("Autor", width=250)
     if "Orientador" in df_aggrid.columns: gb.configure_column("Orientador", width=250)
@@ -312,57 +322,81 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     if "Tipo de Documento" in df_aggrid.columns: gb.configure_column("Tipo de Documento", width=150)
     if "Ano" in df_aggrid.columns: gb.configure_column("Ano", width=90)
 
-    # coluna booleana com checkbox visual
+    # Coluna booleana com checkbox visual
     gb.configure_column(
         SELECAO_COL,
         header_name="Selecionar",
-        editable=True,
+        editable=True,                       # permite editar o valor no rowData
         cellRenderer='agCheckboxCellRenderer',
         width=120
     )
     gb.configure_column("index_original", hide=True)
 
+    # JS: ao clicar na célula da coluna, alterna o valor e garante seleção única
+    toggle_js = JsCode(f"""
+    function(e) {{
+      if (e.colDef.field === '{SELECAO_COL}') {{
+        const newVal = !e.value;
+        // seta o valor da linha clicada
+        e.node.setDataValue('{SELECAO_COL}', newVal);
+
+        // se marcou TRUE, desmarca todas as outras linhas
+        if (newVal === true) {{
+          e.api.forEachNode((n) => {{
+            if (n.id !== e.node.id && n.data['{SELECAO_COL}'] === true) {{
+              n.setDataValue('{SELECAO_COL}', false);
+            }}
+          }});
+        }}
+      }}
+    }}
+    """)
+
+    gb.configure_grid_options(
+        onCellClicked=toggle_js,
+        stopEditingWhenCellsLoseFocus=True,   # força commit do editor
+        suppressRowClickSelection=True        # não usar seleção nativa da linha
+    )
+
     grid_opts = gb.build()
 
+    # FORM: garante captura no submit; AS_INPUT retorna df pós-edição
     form_key = f"form_{st.session_state.subject_filter}_{st.session_state.search_term}"
     with st.form(key=form_key):
         grid_response = AgGrid(
             df_aggrid,
             gridOptions=grid_opts,
-            data_return_mode=DataReturnMode.AS_INPUT,   # retorna o DF pós-edição
-            update_mode=GridUpdateMode.MODEL_CHANGED,  # captura mudanças no DF (checkbox)
+            data_return_mode=DataReturnMode.AS_INPUT,     # <-- recebe o DF editado
+            update_mode=GridUpdateMode.MODEL_CHANGED,     # <-- mudanças refletem no retorno
             fit_columns_on_grid_load=False,
             enable_enterprise_modules=False,
             key=f"grid_{st.session_state.subject_filter}_{st.session_state.search_term}",
-            reload_data=False,  # evitar resets de estado do grid
+            reload_data=False,                             # evita reset do grid ao rerun
         )
         submitted = st.form_submit_button("Analisar Item Selecionado ↓", use_container_width=True)
 
-    # Debug opcional (útil até estabilizar)
+    # (opcional) bloco de debug
     with st.expander("Depuração da seleção (payload do AgGrid)"):
-        st.caption("Isto ajuda a inspecionar o que o componente está retornando.")
-        try:
-            st.write("Chaves:", list(grid_response.keys()))
-        except Exception:
-            st.write("grid_response não é mapeável por chaves.")
-        st.write(grid_response)
+        st.write({k: type(grid_response.get(k)).__name__ for k in grid_response.keys()})
+        st.write("Linhas marcadas:",
+                 pd.DataFrame(grid_response.get("data", [])).query(f"{SELECAO_COL} == True").head())
 
-    # Processa a seleção **após** submit do formulário, lendo do DF retornado
+    # Processa a seleção APÓS o submit, lendo do DF retornado
     if submitted:
-        df_return = pd.DataFrame(grid_response["data"]) if "data" in grid_response else pd.DataFrame()
+        df_return = pd.DataFrame(grid_response.get("data", []))
         if not df_return.empty and SELECAO_COL in df_return.columns:
             escolhidos = df_return[df_return[SELECAO_COL] == True]
             if len(escolhidos) == 1:
                 st.session_state.selected_rows_cache = escolhidos[['index_original'] + [c for c in cols_display if c in df_return.columns]]
             elif len(escolhidos) == 0:
                 st.session_state.selected_rows_cache = pd.DataFrame()
-                st.warning("Por favor, marque uma linha na coluna 'Selecionar' antes de clicar.")
+                st.warning("Marque uma linha na coluna 'Selecionar' antes de clicar.")
             else:
                 st.session_state.selected_rows_cache = pd.DataFrame()
                 st.warning("Marque apenas **uma** linha por vez.")
         else:
             st.session_state.selected_rows_cache = pd.DataFrame()
-            st.warning("Não foi possível ler a seleção. Verifique se a coluna 'Selecionar' está visível e editável.")
+            st.warning("Não foi possível ler a seleção (DF retornado vazio).")
 
     st.divider()
 
@@ -476,12 +510,10 @@ def render_page_sobre():
     st.divider()
     with st.container(border=True):
         st.subheader("🔎 1. Explore e Selecione na Tela de Consultas")
-        st.markdown("""
-        Use a coluna **Selecionar** para marcar uma única linha e clique em **Analisar Item Selecionado**.
-        """)
+        st.markdown("Use a coluna **Selecionar** para marcar uma única linha e clique em **Analisar Item Selecionado**.")
     with st.container(border=True):
         st.subheader("🧠 2. Descubra Conexões com a IA")
-        st.markdown("""Gere grafo de similaridade e sínteses.""")
+        st.markdown("Gere grafo de similaridade e sínteses.")
     with st.container(border=True):
         st.subheader("📊 3. Visualize o Panorama no Dashboard")
         st.markdown("Gráficos agregados por assunto e clusters.")
