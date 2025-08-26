@@ -230,7 +230,7 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
 
 
 # --------------------------------------------------------------------------
-# FUNÇÕES DE RENDERIZAÇÃO DAS PÁGINAS
+# FUNÇÕES DE RENDERIZAÇÃO DAS PÁGINAS (COM A CORREÇÃO)
 # --------------------------------------------------------------------------
 def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
     """Renderiza a página principal de consulta e análise de documentos."""
@@ -238,7 +238,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     
     # --- Gerenciamento de Estado ---
     if 'selected_rows_cache' not in st.session_state:
-        st.session_state.selected_rows_cache = pd.DataFrame() # Inicia como um DataFrame vazio
+        st.session_state.selected_rows_cache = pd.DataFrame()
 
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
@@ -250,8 +250,8 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
         st.session_state.subject_filter = subject_options[0]
-        st.session_state.selected_rows_cache = pd.DataFrame() # Limpa a seleção ao limpar filtros
-        st.experimental_rerun()
+        st.session_state.selected_rows_cache = pd.DataFrame()
+        st.rerun()
 
     search_col1, search_col2 = st.columns(2)
     with search_col1:
@@ -296,33 +296,37 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     gb.configure_column("index_original", hide=True)
     grid_opts = gb.build()
 
-    # --- MUDANÇA CRÍTICA DE ARQUITETURA ---
-    # 1. Mudamos o update_mode. A grid agora NÃO dispara um rerun sozinha.
-    # 2. Adicionamos um botão para o usuário confirmar a seleção.
-    grid_response = AgGrid(
-        df_aggrid,
-        gridOptions=grid_opts,
-        update_mode=GridUpdateMode.MODEL_CHANGED, # MUDANÇA AQUI
-        enable_enterprise_modules=False,
-        fit_columns_on_grid_load=False,
-        key=f"grid_{st.session_state.subject_filter}_{st.session_state.search_term}" # Chave mais específica
-    )
+    # --- MUDANÇA ARQUITETÔNICA COM ST.FORM ---
+    # 1. O formulário cria um escopo. As interações dentro dele não reexecutam o app.
+    with st.form(key="selection_form"):
+        # 2. O AgGrid é renderizado dentro do formulário.
+        grid_response = AgGrid(
+            df_aggrid,
+            gridOptions=grid_opts,
+            update_mode=GridUpdateMode.MODEL_CHANGED,
+            enable_enterprise_modules=False,
+            fit_columns_on_grid_load=False,
+            key=f"grid_{st.session_state.subject_filter}_{st.session_state.search_term}"
+        )
+        
+        col_btn, _ = st.columns([1, 3])
+        with col_btn:
+            # 3. Usamos st.form_submit_button. Ele só retorna True quando clicado.
+            submitted = st.form_submit_button("Analisar Item Selecionado ↓", use_container_width=True, type="primary")
 
-    col_btn, _ = st.columns([1, 3])
-    with col_btn:
-        # 2. O botão de confirmação
-        if st.button("Analisar Item Selecionado ↓", use_container_width=True, type="primary"):
-            if grid_response['selected_rows']:
-                # Ao clicar, salvamos a seleção no nosso cache de estado
-                st.session_state.selected_rows_cache = pd.DataFrame(grid_response['selected_rows'])
-            else:
-                # Se clicar sem selecionar, limpamos o cache e avisamos
-                st.session_state.selected_rows_cache = pd.DataFrame()
-                st.warning("Por favor, selecione uma linha na tabela antes de clicar.")
+    # 4. A lógica de processamento ocorre FORA do formulário, em um bloco condicional.
+    #    Isso garante que, quando o código for executado, grid_response conterá
+    #    o estado final e sincronizado da seleção.
+    if submitted:
+        if grid_response['selected_rows']:
+            st.session_state.selected_rows_cache = pd.DataFrame(grid_response['selected_rows'])
+        else:
+            st.session_state.selected_rows_cache = pd.DataFrame()
+            st.warning("Por favor, selecione uma linha na tabela antes de submeter.")
     
     st.divider()
 
-    # --- As abas agora LEEM do cache de estado (`st.session_state.selected_rows_cache`) ---
+    # --- As abas continuam lendo do cache de estado, que agora é preenchido de forma confiável ---
     selected_rows_df = st.session_state.selected_rows_cache
 
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
@@ -412,7 +416,7 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
         Este gráfico organiza todos os documentos do acervo em um espaço 3D, agrupando-os por similaridade de conteúdo.
 
         - **a) O que os eixos (PCA) representam?**
-          Os eixos `Componente Principal 1, 2 e 3` são o resultado de uma técnica de compressão de dados chamada PCA. Eles reduzem as centenas de dimensões semânticas de um texto a apenas três, para que possamos visualizá-los. **Documentos que estão próximos neste espaço 3D são mais similares em conteúdo** do que aqueles que estão distantes.
+          Os eixos Componente Principal 1, 2 e 3 são o resultado de uma técnica de compressão de dados chamada PCA. Eles reduzem as centenas de dimensões semânticas de um texto a apenas três, para que possamos visualizá-los. **Documentos que estão próximos neste espaço 3D são mais similares em conteúdo** do que aqueles que estão distantes.
 
         - **b) O que os clusters (cores) representam?**
           Cada cor representa um "cluster", ou seja, um **grupo de documentos que o algoritmo identificou como sendo muito parecidos entre si**. É provável que os documentos de um mesmo cluster compartilhem os mesmos temas, conceitos ou abordagens.
