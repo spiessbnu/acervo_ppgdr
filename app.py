@@ -236,11 +236,16 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     """Renderiza a página principal de consulta e análise de documentos."""
     st.title("Consulta ao Acervo de Dissertações e Teses")
     
+    # --- INICIALIZAÇÃO DO ESTADO ---
+    # Usaremos 'selected_rows_persisted' para guardar a seleção entre reruns
+    if 'selected_rows_persisted' not in st.session_state:
+        st.session_state.selected_rows_persisted = []
+
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
     if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
     if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
-    if 'grid_key' not in st.session_state: st.session_state.grid_key = str(uuid.uuid4())
+    if 'grid_key' not in st.session_state: st.session_state.grid_key = "grid_inicial" # Usar uma chave fixa inicial
     if 'selected_id' not in st.session_state: st.session_state.selected_id = None
     if 'num_vizinhos_cache' not in st.session_state: st.session_state.num_vizinhos_cache = None
 
@@ -248,15 +253,20 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
         st.session_state.subject_filter = subject_options[0]
-        st.session_state.grid_key = str(uuid.uuid4())
+        # Limpa também a seleção persistida ao limpar os filtros
+        st.session_state.selected_rows_persisted = [] 
         if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
-        if 'selected_id' in st.session_state: del st.session_state['selected_id']
+        if 'selected_id' in st.session_state: st.session_state.selected_id = None
+        # Mudar a chave da grid força uma recriação completa
+        st.session_state.grid_key = str(uuid.uuid4()) 
 
+    # --- LÓGICA DE FILTRO (sem alterações) ---
     search_col1, search_col2 = st.columns(2)
     with search_col1:
         st.text_input("Busca simples", key="search_term", placeholder="Filtro simples por palavra-chave...", help="Busca por temas exatos: autor, assuntos, palavras-chave e termos nos resumos. Pressione Enter.")
     with search_col2:
         st.text_input("Busca semântica (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema em palavras, tópicos ou frases e pressione Enter. O sistema retornará resultados com temas correlatos.")
+    
     filter_col1, filter_col2 = st.columns([3, 1])
     with filter_col1:
         st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
@@ -269,9 +279,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             ranked_indices = search_semantic(st.session_state.semantic_term, embeddings)
         if ranked_indices:
             df_filtered = df.loc[ranked_indices]
-            st.success(f"Exibindo {len(df_filtered)} resultados.")
         else:
-            st.warning("Nenhum resultado para a busca inteligente.")
             df_filtered = pd.DataFrame(columns=df.columns)
     elif st.session_state.search_term:
         cols_to_search = ["Autor", "Título", "Assuntos", "Resumo_LLM"]
@@ -283,41 +291,62 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         mask_subject = df_filtered['Assuntos_Processados'].apply(lambda lista: selected_subject in lista)
         df_filtered = df_filtered[mask_subject]
     
-    st.divider()
-    
+    # --- LÓGICA DE ATUALIZAÇÃO DA GRID (importante) ---
     current_filter_state = (st.session_state.search_term, st.session_state.semantic_term, st.session_state.subject_filter)
     if st.session_state.get('last_filter_state') != current_filter_state:
         st.session_state.grid_key = str(uuid.uuid4())
+        st.session_state.selected_rows_persisted = [] # Limpa a seleção se o filtro mudar
         if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
         if 'selected_id' in st.session_state: del st.session_state['selected_id']
     st.session_state.last_filter_state = current_filter_state
 
+    st.divider()
+
+    # --- CONFIGURAÇÃO E RENDERIZAÇÃO DA AgGrid ---
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
-    df_aggrid = df_filtered[cols_display + ['index_original']]
+    # Garante que a ordenação do dataframe é estável entre reruns, evitando resets inesperados
+    df_aggrid = df_filtered[cols_display + ['index_original']].sort_values(by='index_original').reset_index(drop=True)
+
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
     gb.configure_column("Título", width=500); gb.configure_column("Autor", width=250); gb.configure_column("Orientador", width=250); gb.configure_column("Assuntos", width=350); gb.configure_column("Tipo de Documento", width=150); gb.configure_column("Ano", width=90)
-    gb.configure_selection(selection_mode="single", use_checkbox=True)
+    
+    # Pré-seleciona a linha com base no que salvamos no session_state
+    if st.session_state.selected_rows_persisted:
+        pre_selected_idx = st.session_state.selected_rows_persisted[0]['_selectedRowNodeInfo']['nodeRowIndex']
+        gb.configure_selection(selection_mode="single", use_checkbox=True, pre_selected_rows=[pre_selected_idx])
+    else:
+        gb.configure_selection(selection_mode="single", use_checkbox=True)
+
     gb.configure_column("index_original", hide=True)
     grid_opts = gb.build()
-    grid_response = AgGrid(df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED, enable_enterprise_modules=False, fit_columns_on_grid_load=False, key=st.session_state.grid_key)
+    
+    grid_response = AgGrid(
+        df_aggrid, 
+        gridOptions=grid_opts, 
+        update_mode=GridUpdateMode.SELECTION_CHANGED, 
+        enable_enterprise_modules=False, 
+        fit_columns_on_grid_load=False,
+        # A chave agora muda apenas quando os filtros são alterados
+        key=st.session_state.grid_key, 
+        # Esta opção evita que a grid se recarregue se os dados não mudaram de fato
+        reload_data=False 
+    )
     st.divider()
+    
+    # --- NOVO PONTO CRÍTICO: ATUALIZAÇÃO DO ESTADO DE SELEÇÃO ---
+    # Se uma nova seleção foi feita na interface, grid_response['selected_rows'] terá conteúdo.
+    # Nós imediatamente salvamos isso no nosso estado de sessão persistente.
+    if grid_response['selected_rows']:
+        st.session_state.selected_rows_persisted = grid_response['selected_rows']
 
-    # --------------------------------------------------------------------------
-    # ALTERAÇÕES APLICADAS AQUI
-    # --------------------------------------------------------------------------
-    # 1. Obter as linhas selecionadas a partir da chave 'selected_rows' do dicionário.
-    selected_rows_list = grid_response.get('selected_rows', [])
+    # O resto do código agora LÊ SEMPRE do nosso estado persistente, não da resposta direta da grid.
+    selected_rows_df = pd.DataFrame(st.session_state.selected_rows_persisted)
 
-    # 2. Converter a lista de dicionários para um DataFrame para manter a compatibilidade com o resto do código.
-    selected_rows_df = pd.DataFrame(selected_rows_list)
-    # --------------------------------------------------------------------------
-
+    # --- ABAS DE DETALHES E SIMILARES (lógica agora é mais estável) ---
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
     with tab_detalhes:
-        # 3. Alterar a verificação para checar se o DataFrame não está vazio.
         if not selected_rows_df.empty:
-            # 4. Usar .iloc[0] para pegar a primeira linha do DataFrame.
             idx_original = selected_rows_df.iloc[0]['index_original']
             detalhes = df.loc[idx_original]
             
@@ -334,20 +363,21 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             
     with tab_similares:
         if not matriz_similaridade.any(): st.warning("Dados de similaridade não disponíveis.")
-        # 5. Usar a mesma verificação de DataFrame vazio aqui.
         elif not selected_rows_df.empty:
-            # 6. Usar .iloc[0] para pegar o ID da primeira linha selecionada.
             id_selecionado = selected_rows_df.iloc[0]['index_original']
             num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1)
+            
             if st.session_state.get('selected_id') != id_selecionado or st.session_state.get('num_vizinhos_cache') != num_vizinhos:
                 if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
                 st.session_state.selected_id = id_selecionado
                 st.session_state.num_vizinhos_cache = num_vizinhos
+                
             fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
             st.plotly_chart(fig, use_container_width=True)
             df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
             st.dataframe(df_similares, use_container_width=True, hide_index=True)
             st.divider()
+
             if st.button("Gerar análise da rede de trabalhos com IA 🧠", key="btn_analise"):
                 cache_key = (id_selecionado, num_vizinhos)
                 if cache_key in st.session_state.analysis_cache:
@@ -366,7 +396,6 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
                     st.subheader("Análise Gerada por IA"); st.markdown(st.session_state.analysis_result)
         else:
             st.info("Selecione um registro para visualizar trabalhos similares.")
-
 
 def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     """Renderiza a página do Dashboard com visualizações sobre os dados."""
