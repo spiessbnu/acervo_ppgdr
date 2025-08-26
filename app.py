@@ -3,7 +3,7 @@
 # --------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode  # GridUpdateMode mantido por compatibilidade
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 import numpy as np
 import networkx as nx
 import plotly.graph_objects as go
@@ -22,6 +22,7 @@ import ast
 # --------------------------------------------------------------------------
 CSV_DATA_PATH = "dados_finais_com_resumo_llm.csv"
 EMBEDDINGS_PATH = "openai_embeddings_concatenado_large.npy"
+
 
 # --------------------------------------------------------------------------
 # FUNÇÃO 1: Configuração da página do Streamlit
@@ -61,6 +62,7 @@ def load_data(path: str) -> pd.DataFrame:
         st.error(f"Ocorreu um erro ao carregar o arquivo CSV '{path}': {e}")
         return None
 
+
 @st.cache_data
 def load_embeddings(path: str) -> np.ndarray:
     """Carrega os embeddings com tratamento de erro aprimorado."""
@@ -72,6 +74,7 @@ def load_embeddings(path: str) -> np.ndarray:
     except Exception as e:
         st.error(f"Ocorreu um erro ao carregar o arquivo de embeddings '{path}': {e}")
         return None
+
 
 def validate_data(df: pd.DataFrame, embeddings: np.ndarray) -> bool:
     """Verifica se os dados carregados são consistentes."""
@@ -88,6 +91,7 @@ def validate_data(df: pd.DataFrame, embeddings: np.ndarray) -> bool:
     st.toast("Arquivos de dados carregados e validados!", icon="✅")
     return True
 
+
 @st.cache_data
 def calculate_similarity_matrix(_embeddings: np.ndarray) -> np.ndarray:
     """Calcula a matriz de similaridade de cossenos a partir dos embeddings."""
@@ -95,10 +99,12 @@ def calculate_similarity_matrix(_embeddings: np.ndarray) -> np.ndarray:
         return cosine_similarity(_embeddings)
     return np.array([])
 
+
 def remover_acentos(texto: str) -> str:
     """Remove acentos de uma string para ordenação alfabética correta."""
     texto_normalizado = unicodedata.normalize('NFD', texto)
     return "".join(c for c in texto_normalizado if not unicodedata.combining(c))
+
 
 @st.cache_data
 def prepare_subject_list(_df: pd.DataFrame) -> list:
@@ -108,6 +114,7 @@ def prepare_subject_list(_df: pd.DataFrame) -> list:
     todos_assuntos = [assunto for sublista in _df['Assuntos_Processados'] for assunto in sublista]
     lista_unica = sorted(list(set(todos_assuntos)), key=lambda texto: remover_acentos(texto.lower()))
     return ['-- Selecione um Assunto --'] + lista_unica
+
 
 # --------------------------------------------------------------------------
 # FUNÇÕES DE COMPUTAÇÃO PARA O DASHBOARD (COM CACHE)
@@ -122,6 +129,7 @@ def compute_clusters(_embeddings, k):
     df_plot = pd.DataFrame(embeddings_3d, columns=['pca1', 'pca2', 'pca3'])
     df_plot['cluster'] = cluster_labels
     return df_plot
+
 
 # --------------------------------------------------------------------------
 # FUNÇÃO DE IA PARA GERAR SÍNTESE (VERSÃO APRIMORADA)
@@ -194,8 +202,7 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
         x, y = pos[node]; info = G.nodes[node]; level = info['level']
         node_trace['x'] += (x,); node_trace['y'] += (y,)
         node_trace['marker']['color'] += (cores_niveis[level],)
-        if level == 0:
-            size = 35; similarity_text = "Nó Central"
+        if level == 0: size = 35; similarity_text = "Nó Central"
         else:
             similarity_score = matriz_similaridade[node, id_documento_inicial]
             size = 15 + (similarity_score ** 3 * 40); similarity_text = f"Similaridade: {similarity_score:.3f}"
@@ -209,31 +216,18 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
     fig = go.Figure(data=[edge_trace, node_trace], layout=go.Layout(title='', showlegend=False, hovermode='closest', margin=dict(b=20, l=5, r=5, t=40), xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)))
     return fig, nos_da_rede
 
+
 @st.cache_data(show_spinner=False)
 def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="text-embedding-3-large") -> list:
-    if not query_text.strip():
-        return []
+    if not query_text.strip(): return []
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         query_embedding = client.embeddings.create(input=[query_text], model=model).data[0].embedding
         similarities = cosine_similarity([query_embedding], _document_embeddings).flatten()
         return [i for i in np.argsort(-similarities) if similarities[i] > 0.2][:20]
     except Exception as e:
-        st.error(f"Erro na busca inteligente: {e}")
-        return []
+        st.error(f"Erro na busca inteligente: {e}"); return []
 
-# --------------------------------------------------------------------------
-# COMPAT: leitura robusta da seleção do AgGrid (todas as versões)
-# --------------------------------------------------------------------------
-def _get_selected_rows(grid_response):
-    """
-    Retorna sempre uma lista de dicts representando as linhas selecionadas.
-    - Suporta retorno dict (>=1.0) com chave "selected_rows".
-    - Suporta SimpleNamespace (<1.0) com atributo .selected_rows.
-    """
-    if isinstance(grid_response, dict):
-        return grid_response.get("selected_rows", []) or []
-    return getattr(grid_response, "selected_rows", []) or []
 
 # --------------------------------------------------------------------------
 # FUNÇÕES DE RENDERIZAÇÃO DAS PÁGINAS
@@ -241,33 +235,35 @@ def _get_selected_rows(grid_response):
 def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
     """Renderiza a página principal de consulta e análise de documentos."""
     st.title("Consulta ao Acervo de Dissertações e Teses")
+    
+    # --- Gerenciamento de Estado ---
+    if 'selected_rows_cache' not in st.session_state:
+        st.session_state.selected_rows_cache = pd.DataFrame() # Inicia como um DataFrame vazio
 
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
     if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
     if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
-    if 'grid_key' not in st.session_state: st.session_state.grid_key = str(uuid.uuid4())
-    if 'selected_id' not in st.session_state: st.session_state.selected_id = None
-    if 'num_vizinhos_cache' not in st.session_state: st.session_state.num_vizinhos_cache = None
 
+    # --- Lógica de Filtro ---
     def clear_searches():
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
         st.session_state.subject_filter = subject_options[0]
-        st.session_state.grid_key = str(uuid.uuid4())
-        if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
-        if 'selected_id' in st.session_state: del st.session_state['selected_id']
+        st.session_state.selected_rows_cache = pd.DataFrame() # Limpa a seleção ao limpar filtros
+        st.experimental_rerun()
 
     search_col1, search_col2 = st.columns(2)
     with search_col1:
-        st.text_input("Busca simples", key="search_term", placeholder="Filtro simples por palavra-chave...", help="Busca por temas exatos: autor, assuntos, palavras-chave e termos nos resumos. Pressione Enter.")
+        st.text_input("Busca simples", key="search_term", placeholder="Filtro simples por palavra-chave...")
     with search_col2:
-        st.text_input("Busca semântica (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?", help="Descreva um tema em palavras, tópicos ou frases e pressione Enter. O sistema retornará resultados com temas correlatos.")
+        st.text_input("Busca semântica (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?")
+    
     filter_col1, filter_col2 = st.columns([3, 1])
     with filter_col1:
         st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
     with filter_col2:
-        st.button("Limpar Tudo 🧹", on_click=clear_searches, use_container_width=True, help="Limpa todas as buscas e filtros.")
+        st.button("Limpar Tudo 🧹", on_click=clear_searches, use_container_width=True)
 
     df_filtered = df.copy()
     if st.session_state.semantic_term:
@@ -275,148 +271,126 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             ranked_indices = search_semantic(st.session_state.semantic_term, embeddings)
         if ranked_indices:
             df_filtered = df.loc[ranked_indices]
-            st.success(f"Exibindo {len(df_filtered)} resultados.")
         else:
-            st.warning("Nenhum resultado para a busca inteligente.")
             df_filtered = pd.DataFrame(columns=df.columns)
     elif st.session_state.search_term:
         cols_to_search = ["Autor", "Título", "Assuntos", "Resumo_LLM"]
-        mask = df_filtered[cols_to_search].fillna('').astype(str).apply(
-            lambda col: col.str.contains(st.session_state.search_term, case=False)
-        ).any(axis=1)
+        mask = df_filtered[cols_to_search].fillna('').astype(str).apply(lambda col: col.str.contains(st.session_state.search_term, case=False)).any(axis=1)
         df_filtered = df_filtered[mask]
-
+    
     selected_subject = st.session_state.get('subject_filter', subject_options[0])
     if selected_subject != '-- Selecione um Assunto --':
         mask_subject = df_filtered['Assuntos_Processados'].apply(lambda lista: selected_subject in lista)
         df_filtered = df_filtered[mask_subject]
-
+    
     st.divider()
 
-    current_filter_state = (st.session_state.search_term, st.session_state.semantic_term, st.session_state.subject_filter)
-    if st.session_state.get('last_filter_state') != current_filter_state:
-        st.session_state.grid_key = str(uuid.uuid4())
-        if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
-        if 'selected_id' in st.session_state: del st.session_state['selected_id']
-    st.session_state.last_filter_state = current_filter_state
-
+    # --- Configuração da AgGrid ---
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Assuntos", "Orientador"]
     df_aggrid = df_filtered[cols_display + ['index_original']]
 
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
-    gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
-    gb.configure_column("Título", width=500)
-    gb.configure_column("Autor", width=250)
-    gb.configure_column("Orientador", width=250)
-    gb.configure_column("Assuntos", width=350)
-    gb.configure_column("Tipo de Documento", width=150)
-    gb.configure_column("Ano", width=90)
     gb.configure_selection(selection_mode="single", use_checkbox=True)
+    gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
+    gb.configure_column("Título", width=500); gb.configure_column("Autor", width=250); gb.configure_column("Orientador", width=250); gb.configure_column("Assuntos", width=350); gb.configure_column("Tipo de Documento", width=150); gb.configure_column("Ano", width=90)
     gb.configure_column("index_original", hide=True)
     grid_opts = gb.build()
 
-    # >>> ALTERAÇÃO: usar update_on (compatível com versões recentes)
+    # --- MUDANÇA CRÍTICA DE ARQUITETURA ---
+    # 1. Mudamos o update_mode. A grid agora NÃO dispara um rerun sozinha.
+    # 2. Adicionamos um botão para o usuário confirmar a seleção.
     grid_response = AgGrid(
         df_aggrid,
         gridOptions=grid_opts,
-        update_on=["SELECTION_CHANGED"],
+        update_mode=GridUpdateMode.MODEL_CHANGED, # MUDANÇA AQUI
         enable_enterprise_modules=False,
         fit_columns_on_grid_load=False,
-        key=st.session_state.grid_key
+        key=f"grid_{st.session_state.subject_filter}_{st.session_state.search_term}" # Chave mais específica
     )
+
+    col_btn, _ = st.columns([1, 3])
+    with col_btn:
+        # 2. O botão de confirmação
+        if st.button("Analisar Item Selecionado ↓", use_container_width=True, type="primary"):
+            if grid_response['selected_rows']:
+                # Ao clicar, salvamos a seleção no nosso cache de estado
+                st.session_state.selected_rows_cache = pd.DataFrame(grid_response['selected_rows'])
+            else:
+                # Se clicar sem selecionar, limpamos o cache e avisamos
+                st.session_state.selected_rows_cache = pd.DataFrame()
+                st.warning("Por favor, selecione uma linha na tabela antes de clicar.")
+    
     st.divider()
 
-    # >>> ALTERAÇÃO: leitura robusta da seleção
-    selected_rows = _get_selected_rows(grid_response)
+    # --- As abas agora LEEM do cache de estado (`st.session_state.selected_rows_cache`) ---
+    selected_rows_df = st.session_state.selected_rows_cache
 
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
-
     with tab_detalhes:
-        if selected_rows and len(selected_rows) > 0:
-            idx_original = selected_rows[0]['index_original']
+        if not selected_rows_df.empty:
+            idx_original = selected_rows_df.iloc[0]['index_original']
             detalhes = df.loc[idx_original]
-
             st.subheader(detalhes.get('Título', ''))
             st.divider()
-            st.markdown("#### Assuntos")
-            st.write(detalhes.get('Assuntos', ''))
-            st.markdown("#### Resumo")
-            st.write(detalhes.get('Resumo_LLM', ''))
+            st.markdown("#### Assuntos"); st.write(detalhes.get('Assuntos', ''))
+            st.markdown("#### Resumo"); st.write(detalhes.get('Resumo_LLM', ''))
             st.markdown("#### Link para Download")
             link_pdf = detalhes.get('Link_PDF')
-            if link_pdf and isinstance(link_pdf, str):
-                st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
-            else:
-                st.warning("Nenhum link para download disponível.")
+            if link_pdf and isinstance(link_pdf, str): st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
+            else: st.warning("Nenhum link para download disponível.")
         else:
-            st.info("Selecione um registro na tabela para ver os detalhes.")
-
+            st.info("Selecione um registro na tabela e clique em 'Analisar Item Selecionado' para ver os detalhes.")
+            
     with tab_similares:
-        if not matriz_similaridade.any():
+        if not matriz_similaridade.any(): 
             st.warning("Dados de similaridade não disponíveis.")
-        elif selected_rows and len(selected_rows) > 0:
-            # >>> ALTERAÇÃO: não usar .iloc/.empty; trabalhar com lista de dicts
-            id_selecionado = selected_rows[0]['index_original']
-            num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1)
-
-            if st.session_state.get('selected_id') != id_selecionado or st.session_state.get('num_vizinhos_cache') != num_vizinhos:
-                if 'analysis_result' in st.session_state:
-                    del st.session_state['analysis_result']
-                st.session_state.selected_id = id_selecionado
-                st.session_state.num_vizinhos_cache = num_vizinhos
-
+        elif not selected_rows_df.empty:
+            id_selecionado = selected_rows_df.iloc[0]['index_original']
+            num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1, key=f"slider_{id_selecionado}")
+            
             fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
             st.plotly_chart(fig, use_container_width=True)
-
             df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
             st.dataframe(df_similares, use_container_width=True, hide_index=True)
-
             st.divider()
-            if st.button("Gerar análise da rede de trabalhos com IA 🧠", key="btn_analise"):
+            
+            if st.button("Gerar análise da rede de trabalhos com IA 🧠", key=f"btn_analise_{id_selecionado}"):
                 cache_key = (id_selecionado, num_vizinhos)
                 if cache_key in st.session_state.analysis_cache:
+                    analysis = st.session_state.analysis_cache[cache_key]
                     st.toast("Reexibindo análise em cache. ⚡")
-                    st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]
                 else:
                     summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
                     if not summaries_to_analyze.empty:
                         with st.spinner('A IA está lendo e preparando a análise...'):
                             analysis = get_ai_synthesis("\n\n---\n\n".join(summaries_to_analyze))
-                            st.session_state.analysis_result = analysis
                             st.session_state.analysis_cache[cache_key] = analysis
                     else:
-                        st.warning("Não há resumos para gerar análise.")
-                        st.session_state.analysis_result = ""
-            if 'analysis_result' in st.session_state and st.session_state.analysis_result:
+                        analysis = "Não há resumos disponíveis para gerar análise."
+                        st.warning(analysis)
+                
                 with st.container(border=True):
                     st.subheader("Análise Gerada por IA")
-                    st.markdown(st.session_state.analysis_result)
+                    st.markdown(analysis)
         else:
-            st.info("Selecione um registro para visualizar trabalhos similares.")
+            st.info("Selecione um registro, clique em 'Analisar Item Selecionado' e veja aqui os trabalhos similares.")
+
 
 def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     """Renderiza a página do Dashboard com visualizações sobre os dados."""
     st.title("Dashboard de Análise do Acervo")
     st.markdown("---")
-
+    
     # Gráfico 1: Top 20 Assuntos Mais Frequentes
     st.subheader("Top 20 Assuntos Mais Frequentes")
     todos_assuntos = [assunto for sublista in df['Assuntos_Processados'] for assunto in sublista]
     if todos_assuntos:
         contador_assuntos = Counter(todos_assuntos)
         df_top20 = pd.DataFrame(contador_assuntos.most_common(20), columns=['Assunto', 'Quantidade'])
-        fig_assuntos = px.bar(
-            df_top20.sort_values(by='Quantidade', ascending=True),
-            x='Quantidade', y='Assunto', orientation='h', title=' ', text='Quantidade'
-        )
+        fig_assuntos = px.bar(df_top20.sort_values(by='Quantidade', ascending=True), x='Quantidade', y='Assunto', orientation='h', title=' ', 
+                                text='Quantidade')
         fig_assuntos.update_traces(marker_color='#1f77b4', textposition='outside')
-        fig_assuntos.update_layout(
-            yaxis=dict(tickmode='linear'),
-            xaxis_title="Ocorrências",
-            yaxis_title=None,
-            margin=dict(l=200, r=20, t=50, b=50),
-            title_x=0.5
-        )
+        fig_assuntos.update_layout(yaxis=dict(tickmode='linear'), xaxis_title="Ocorrências", yaxis_title=None, margin=dict(l=200, r=20, t=50, b=50), title_x=0.5)
         st.plotly_chart(fig_assuntos, use_container_width=True)
     st.markdown("---")
 
@@ -424,9 +398,8 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     st.subheader("Produção Anual por Tipo de Documento")
     contagem_agrupada = df.groupby(['Ano', 'Tipo de Documento']).size().reset_index(name='Quantidade').sort_values('Ano')
     if not contagem_agrupada.empty:
-        fig_producao = px.bar(
-            contagem_agrupada, x='Ano', y='Quantidade', color='Tipo de Documento', title=' ', barmode='group'
-        )
+        fig_producao = px.bar(contagem_agrupada, x='Ano', y='Quantidade', color='Tipo de Documento', title=' ', 
+                                barmode='group')
         fig_producao.update_layout(xaxis_title="Ano", yaxis_title="Quantidade", title_x=0.5, legend_title_text='Tipo')
         fig_producao.update_xaxes(type='category')
         st.plotly_chart(fig_producao, use_container_width=True)
@@ -453,17 +426,15 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
           - Use a **roda do mouse** para aplicar zoom.
           - **Clique nos itens da legenda** à direita para ativar ou desativar a visualização de clusters específicos. Isso é útil para focar a análise em grupos de seu interesse.
         """)
-
+        
     k_escolhido = st.slider("Selecione o número de clusters (k):", min_value=2, max_value=8, value=4, step=1, help="Escolha em quantos grupos os documentos devem ser divididos.")
-
+    
     with st.spinner(f"Calculando {k_escolhido} clusters..."):
         df_plot_3d = compute_clusters(embeddings, k_escolhido)
         df_plot_3d['Título'] = df['Título']
         df_plot_3d['Autor'] = df['Autor']
-        # Convertendo para string para garantir cores categóricas e discretas
         df_plot_3d['cluster'] = df_plot_3d['cluster'].astype(str)
 
-        # Amostra 8 cores distintas da escala Viridis para usar como paleta discreta
         cores_viridis_discreto = px.colors.sample_colorscale("Viridis", 8)
 
         fig_3d = px.scatter_3d(
@@ -472,75 +443,69 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
             title=f'Clusters de Documentos (k={k_escolhido})',
             color_discrete_sequence=cores_viridis_discreto
         )
-
+        
         fig_3d.update_traces(marker=dict(size=4, opacity=0.8))
         fig_3d.update_layout(
-            height=700,
-            legend_title_text='Clusters',
+            height=700, 
+            legend_title_text='Clusters', 
             scene=dict(
-                xaxis_title='Comp. Principal 1',
-                yaxis_title='Comp. Principal 2',
-                zaxis_title='Comp. Principal 3',
+                xaxis_title='Comp. Principal 1', 
+                yaxis_title='Comp. Principal 2', 
+                zaxis_title='Comp. Principal 3', 
                 aspectmode='cube'
             )
         )
         st.plotly_chart(fig_3d, use_container_width=True)
 
+
 def render_page_sobre():
     """Renderiza a página 'Sobre' com informações de autoria e um guia de uso."""
+    
     st.title("Sobre o projeto")
-
+    
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
     Ela utiliza técnicas de Processamento de Linguagem Natural e Inteligência Artificial para facilitar a descoberta de conhecimento e a análise de tendências.
-
-    **Versão 1.0 - 06/25**
+    
+    **Versão 1.0 - 08/25**
 
     Abaixo está um guia rápido para você aproveitar ao máximo as funcionalidades disponíveis.
     """)
-
+    
     st.divider()
 
-    # --- CARD 1: EXPLORAÇÃO BÁSICA ---
     with st.container(border=True):
-        st.subheader("🔎 1. Explore o Acervo na Tela de Consultas")
+        st.subheader("🔎 1. Explore e Selecione na Tela de Consultas")
         st.markdown("""
-        O ponto de partida é a página **Consultas**. Nela, você pode:
-        - **Buscar por Palavra-Chave:** Use a *Busca simples* para encontrar trabalhos por título, autor ou termos no resumo.
-        - **Filtrar por Assunto:** Refine sua busca selecionando um dos assuntos oficiais na lista.
-        - **Navegar na Tabela:** Os resultados aparecem na tabela interativa. **Clique na caixa de seleção** de uma linha para ver seus detalhes e ativar as análises de similaridade.
+        Na página **Consultas**, use os filtros para encontrar trabalhos de seu interesse.
+        - **Selecione uma linha** clicando na caixa de seleção correspondente.
+        - **Clique no botão 'Analisar Item Selecionado'** que aparecerá logo abaixo da tabela para carregar os dados nas abas de Detalhes e Trabalhos Similares.
         """)
 
-    # --- CARD 2: DESCOBERTA COM IA ---
     with st.container(border=True):
         st.subheader("🧠 2. Descubra Conexões com a IA")
         st.markdown("""
-        Após selecionar um trabalho na tabela, a aba **Trabalhos Similares** é ativada. Nela, você encontra:
-        - **Busca Inteligente:** Em vez da busca simples, descreva um tema na *Busca inteligente* e a IA encontrará os trabalhos mais relevantes com base no significado.
-        - **Grafo de Similaridade:** Um mapa visual que mostra o trabalho selecionado (nó central) e os documentos mais próximos a ele em conteúdo. O tamanho dos nós e a proximidade indicam o grau de similaridade.
+        Após analisar um item, a aba **Trabalhos Similares** é ativada. Nela, você encontra:
+        - **Grafo de Similaridade:** Um mapa visual que mostra o trabalho selecionado e os documentos mais próximos a ele em conteúdo.
+        - **Busca Semântica:** Em vez da busca simples, descreva um tema na *Busca semântica* e a IA encontrará os trabalhos mais relevantes com base no significado.
         """)
 
-    # --- CARD 3: SÍNTESE ANALÍTICA ---
     with st.container(border=True):
         st.subheader("📄✨ 3. Gere uma Análise Unificada")
         st.markdown("""
-        Ainda na aba **Trabalhos Similares**, após o grafo ser exibido, você pode ir além:
+        Ainda na aba **Trabalhos Similares**, você pode ir além:
         - **Clique em "Gerar análise da rede de trabalhos com IA 🧠"**: A aplicação enviará os resumos dos trabalhos do grafo para a IA.
-        - **Receba uma Síntese:** A IA não irá resumir cada trabalho individualmente. Em vez disso, ela criará uma **análise coesa**, identificando os temas centrais, as conexões e o panorama geral daquele grupo de pesquisas.
+        - **Receba uma Síntese:** A IA criará uma **análise coesa**, identificando os temas centrais e as conexões daquele grupo de pesquisas.
         """)
 
-    # --- CARD 4: VISÃO GERAL NO DASHBOARD ---
     with st.container(border=True):
         st.subheader("📊 4. Visualize o Panorama no Dashboard")
         st.markdown("""
-        Quer entender o acervo como um todo? Acesse a página **Dashboard**. Lá você encontrará:
-        - **Gráficos de Frequência:** Veja quais são os assuntos mais pesquisados e a produção anual de teses e dissertações.
-        - **Mapa de Clusters 3D:** Explore um gráfico 3D interativo que agrupa **todos** os documentos do acervo por similaridade. Gire, aproxime e clique nas legendas para investigar os grandes temas de pesquisa.
+        Acesse a página **Dashboard** para obter uma visão geral do acervo, com gráficos sobre os assuntos mais frequentes e um mapa 3D interativo que agrupa todos os documentos por similaridade.
         """)
 
     st.divider()
 
-    # --- SEÇÃO DE INFORMAÇÕES DE AUTORIA ---
     col1, col2 = st.columns([2, 1])
     with col1:
         st.caption("""
@@ -548,10 +513,11 @@ def render_page_sobre():
             **Concepção:** Equipe NET  
             **Fonte:** Biblioteca Universitária FURB
             
-            **Data da Base de Conhecimento:** 06/2025            
+            **Data da Base de Conhecimento:** 08/2025
         """)
     with col2:
         st.link_button("Visite nosso site!", "https://www.net-dr.org", use_container_width=True)
+
 
 # --------------------------------------------------------------------------
 # FUNÇÃO PRINCIPAL DO APLICATIVO (ROTEADOR)
@@ -562,31 +528,22 @@ def main():
     if 'page' not in st.session_state: st.session_state.page = "Consultas"
 
     with st.sidebar:
-        # Título ajustado para negrito e cor branca usando markdown
         st.markdown("<h1 style='color:white;'><b>📚 Acervo PPGDR</b></h1>", unsafe_allow_html=True)
 
-        # Botões de navegação
         if st.button("Consultas", use_container_width=True): st.session_state.page = "Consultas"
         if st.button("Dashboard", use_container_width=True): st.session_state.page = "Dashboard"
         if st.button("Sobre", use_container_width=True): st.session_state.page = "Sobre"
 
-        # Adicionando um divisor para separar os botões da imagem
         st.divider()
-        # Imagem no rodapé da barra lateral
+        
         st.image("NET-01.png", use_container_width=True)
-
+    
     df_raw = load_data(CSV_DATA_PATH)
-    if df_raw is None:
-        st.error("Falha ao carregar dados.")
-        st.stop()
-
-    # Padroniza nome da coluna
+    if df_raw is None: st.error("Falha ao carregar dados."); st.stop()
     df = df_raw.rename(columns={"Tipo_Documento": "Tipo de Documento"})
-
     embeddings = load_embeddings(EMBEDDINGS_PATH)
-    if not validate_data(df, embeddings):
-        st.stop()
-
+    if not validate_data(df, embeddings): st.stop()
+    
     matriz_similaridade = calculate_similarity_matrix(embeddings)
     subject_options = prepare_subject_list(df)
     df['index_original'] = df.index
@@ -597,6 +554,6 @@ def main():
         render_page_dashboard(df, embeddings)
     elif st.session_state.page == "Sobre":
         render_page_sobre()
-
+        
 if __name__ == "__main__":
     main()
