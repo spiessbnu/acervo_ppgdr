@@ -303,12 +303,22 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     grid_response = AgGrid(df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED, enable_enterprise_modules=False, fit_columns_on_grid_load=False, key=st.session_state.grid_key)
     st.divider()
 
-    selected_rows = grid_response.selected_rows
+    # --------------------------------------------------------------------------
+    # ALTERAÇÕES APLICADAS AQUI
+    # --------------------------------------------------------------------------
+    # 1. Obter as linhas selecionadas a partir da chave 'selected_rows' do dicionário.
+    selected_rows_list = grid_response.get('selected_rows', [])
+
+    # 2. Converter a lista de dicionários para um DataFrame para manter a compatibilidade com o resto do código.
+    selected_rows_df = pd.DataFrame(selected_rows_list)
+    # --------------------------------------------------------------------------
 
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
     with tab_detalhes:
-        if selected_rows is not None and len(selected_rows) > 0:
-            idx_original = selected_rows[0]['index_original']
+        # 3. Alterar a verificação para checar se o DataFrame não está vazio.
+        if not selected_rows_df.empty:
+            # 4. Usar .iloc[0] para pegar a primeira linha do DataFrame.
+            idx_original = selected_rows_df.iloc[0]['index_original']
             detalhes = df.loc[idx_original]
             
             st.subheader(detalhes.get('Título', ''))
@@ -324,8 +334,10 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             
     with tab_similares:
         if not matriz_similaridade.any(): st.warning("Dados de similaridade não disponíveis.")
-        elif selected_rows is not None and not selected_rows.empty:
-            id_selecionado = selected_rows.iloc[0]['index_original']
+        # 5. Usar a mesma verificação de DataFrame vazio aqui.
+        elif not selected_rows_df.empty:
+            # 6. Usar .iloc[0] para pegar o ID da primeira linha selecionada.
+            id_selecionado = selected_rows_df.iloc[0]['index_original']
             num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1)
             if st.session_state.get('selected_id') != id_selecionado or st.session_state.get('num_vizinhos_cache') != num_vizinhos:
                 if 'analysis_result' in st.session_state: del st.session_state['analysis_result']
@@ -355,6 +367,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         else:
             st.info("Selecione um registro para visualizar trabalhos similares.")
 
+
 def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     """Renderiza a página do Dashboard com visualizações sobre os dados."""
     st.title("Dashboard de Análise do Acervo")
@@ -367,7 +380,7 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
         contador_assuntos = Counter(todos_assuntos)
         df_top20 = pd.DataFrame(contador_assuntos.most_common(20), columns=['Assunto', 'Quantidade'])
         fig_assuntos = px.bar(df_top20.sort_values(by='Quantidade', ascending=True), x='Quantidade', y='Assunto', orientation='h', title=' ', 
-                              text='Quantidade')
+                                text='Quantidade')
         fig_assuntos.update_traces(marker_color='#1f77b4', textposition='outside')
         fig_assuntos.update_layout(yaxis=dict(tickmode='linear'), xaxis_title="Ocorrências", yaxis_title=None, margin=dict(l=200, r=20, t=50, b=50), title_x=0.5)
         st.plotly_chart(fig_assuntos, use_container_width=True)
@@ -378,7 +391,7 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     contagem_agrupada = df.groupby(['Ano', 'Tipo de Documento']).size().reset_index(name='Quantidade').sort_values('Ano')
     if not contagem_agrupada.empty:
         fig_producao = px.bar(contagem_agrupada, x='Ano', y='Quantidade', color='Tipo de Documento', title=' ', 
-                              barmode='group')
+                                barmode='group')
         fig_producao.update_layout(xaxis_title="Ano", yaxis_title="Quantidade", title_x=0.5, legend_title_text='Tipo')
         fig_producao.update_xaxes(type='category')
         st.plotly_chart(fig_producao, use_container_width=True)
@@ -415,9 +428,6 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
         # Convertendo para string para garantir cores categóricas e discretas
         df_plot_3d['cluster'] = df_plot_3d['cluster'].astype(str)
 
-        # ###################################### #
-        # ##      ALTERAÇÕES APLICADAS AQUI     ##
-        # ###################################### #
         # Amostra 8 cores distintas da escala Viridis para usar como paleta discreta
         cores_viridis_discreto = px.colors.sample_colorscale("Viridis", 8)
 
@@ -442,13 +452,11 @@ def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
         st.plotly_chart(fig_3d, use_container_width=True)
 
 
-import streamlit as st
-
 def render_page_sobre():
     """Renderiza a página 'Sobre' com informações de autoria e um guia de uso."""
     
     st.title("Sobre o projeto")
-   
+    
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
     Ela utiliza técnicas de Processamento de Linguagem Natural e Inteligência Artificial para facilitar a descoberta de conhecimento e a análise de tendências.
@@ -507,7 +515,7 @@ def render_page_sobre():
             **Concepção:** Equipe NET  
             **Fonte:** Biblioteca Universitária FURB
             
-            **Data da Base de Conhecimento:** 06/2025            
+            **Data da Base de Conhecimento:** 06/2025
         """)
     with col2:
         st.link_button("Visite nosso site!", "https://www.net-dr.org", use_container_width=True)
@@ -556,4 +564,3 @@ def main():
         
 if __name__ == "__main__":
     main()
-
