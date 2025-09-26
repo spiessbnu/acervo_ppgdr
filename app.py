@@ -58,9 +58,15 @@ def load_data(path: str) -> pd.DataFrame:
     try:
         df = pd.read_csv(path)
         if 'Assuntos_Lista' in df.columns:
+            # Garante que a coluna de assuntos processados exista para os filtros
             df['Assuntos_Processados'] = df['Assuntos_Lista'].apply(safe_literal_eval)
         else:
             df['Assuntos_Processados'] = [[] for _ in range(len(df))]
+        
+        # [SUGESTÃO] Adiciona um índice original para rastreamento estável
+        if 'index_original' not in df.columns:
+            df['index_original'] = df.index
+            
         return df
     except FileNotFoundError:
         st.error(f"Arquivo de dados não encontrado: '{path}'.")
@@ -237,24 +243,35 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
 
     # --- Filtros ---
-    def clear_searches():
+    def clear_all_filters():
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
         st.session_state.subject_filter = subject_options[0]
         st.session_state.selected_rows_cache = pd.DataFrame()
-        st.experimental_rerun()
-
+        # [SUGESTÃO] Limpa também o input da busca semântica se houver
+        if 'semantic_query_input' in st.session_state:
+            st.session_state.semantic_query_input = ""
+        
     search_col1, search_col2 = st.columns(2)
     with search_col1:
-        st.text_input("Busca simples", key="search_term", placeholder="Filtro simples por palavra-chave...")
+        st.text_input("Busca simples por palavra-chave", key="search_term", placeholder="Filtre por autor, título, resumo...")
+    
     with search_col2:
-        st.text_input("Busca semântica (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?")
-
+        # [SUGESTÃO] Usar um form para a busca semântica para evitar chamadas excessivas à API
+        with st.form(key="semantic_form"):
+            semantic_input = st.text_input("Busca semântica (com IA)", placeholder="Qual o tema do seu interesse?", key="semantic_query_input")
+            semantic_submitted = st.form_submit_button("Buscar com IA 🧠")
+            if semantic_submitted and semantic_input:
+                st.session_state.semantic_term = semantic_input
+                # Limpa outros filtros para evitar confusão
+                st.session_state.search_term = ""
+                st.session_state.subject_filter = subject_options[0]
+                
     filter_col1, filter_col2 = st.columns([3, 1])
     with filter_col1:
         st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
     with filter_col2:
-        st.button("Limpar Tudo 🧹", on_click=clear_searches, use_container_width=True)
+        st.button("Limpar Filtros e Seleção 🧹", on_click=clear_all_filters, use_container_width=True, type="primary")
 
     # --- Aplicando filtros ---
     df_filtered = df.copy()
@@ -266,18 +283,22 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             df_filtered = df.loc[ranked_indices]
         else:
             df_filtered = pd.DataFrame(columns=df.columns)
+            st.warning("Nenhum resultado encontrado para a busca semântica.")
     elif st.session_state.search_term:
         cols_pref = ["Autor", "Título", "Assuntos", "Resumo_LLM"]
         cols_to_search = [c for c in cols_pref if c in df_filtered.columns]
+        
+        # [CORREÇÃO] Garante que a coluna de Assuntos (se for lista) seja convertida para string antes da busca
         if "Assuntos" not in cols_to_search and "Assuntos_Processados" in df_filtered.columns:
-            df_filtered["Assuntos_str"] = df_filtered["Assuntos_Processados"].apply(lambda lst: ", ".join(map(str, lst)))
-            cols_to_search.append("Assuntos_str")
+            df_filtered["Assuntos_str_search"] = df_filtered["Assuntos_Processados"].apply(lambda lst: ", ".join(map(str, lst)))
+            cols_to_search.append("Assuntos_str_search")
+            
         if cols_to_search:
             mask = df_filtered[cols_to_search].fillna('').astype(str).apply(
-                lambda col: col.str.contains(st.session_state.search_term, case=False)
+                lambda col: col.str.contains(st.session_state.search_term, case=False, na=False)
             ).any(axis=1)
             df_filtered = df_filtered[mask]
-
+    
     selected_subject = st.session_state.get('subject_filter', subject_options[0])
     if selected_subject != '-- Selecione um Assunto --':
         if 'Assuntos_Processados' in df_filtered.columns:
@@ -288,59 +309,47 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
 
     # --- Tabela (AgGrid dentro de FORM) ---
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano"]
-    if "Assuntos" in df_filtered.columns: cols_display.append("Assuntos")
-    if "Orientador" in df_filtered.columns: cols_display.append("Orientador")
+    if "Assuntos" in df.columns: cols_display.append("Assuntos")
+    if "Orientador" in df.columns: cols_display.append("Orientador")
 
-    # Índice original para mapear seleção -> df
-    if 'index_original' not in df.columns:
-        df['index_original'] = df.index
-    df_filtered = df_filtered.copy()
-    if 'index_original' not in df_filtered.columns:
-        df_filtered['index_original'] = df_filtered.index
-
-    # Monta DF para a grid, com coluna de seleção booleana
-    df_aggrid = df_filtered[cols_display + ['index_original']].copy()
+    df_aggrid_source = df_filtered.copy()
+    
+    # [CORREÇÃO] Converte colunas com listas para strings antes de exibir no AgGrid para evitar erro de serialização JSON
+    if "Assuntos" in df_aggrid_source.columns:
+        df_aggrid_source["Assuntos"] = df_aggrid_source["Assuntos_Processados"].apply(
+            lambda x: ', '.join(x) if isinstance(x, list) else str(x)
+        )
+        
+    df_aggrid = df_aggrid_source[cols_display + ['index_original']].copy()
+    
     if SELECAO_COL not in df_aggrid.columns:
         df_aggrid[SELECAO_COL] = False
-
-    # Se já havia item selecionado, reflete na coluna booleana
+    
     if not st.session_state.selected_rows_cache.empty:
         prev_idx = st.session_state.selected_rows_cache.iloc[0]['index_original']
-        df_aggrid.loc[df_aggrid['index_original'] == prev_idx, SELECAO_COL] = True
+        if prev_idx in df_aggrid['index_original'].values:
+            df_aggrid.loc[df_aggrid['index_original'] == prev_idx, SELECAO_COL] = True
 
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
-
-    # Colunas padrão
-    gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True,
-                                suppressMenu=True, sortable=True)
-
-    # Larguras
+    gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
     if "Título" in df_aggrid.columns: gb.configure_column("Título", width=500)
     if "Autor" in df_aggrid.columns: gb.configure_column("Autor", width=250)
     if "Orientador" in df_aggrid.columns: gb.configure_column("Orientador", width=250)
     if "Assuntos" in df_aggrid.columns: gb.configure_column("Assuntos", width=350)
     if "Tipo de Documento" in df_aggrid.columns: gb.configure_column("Tipo de Documento", width=150)
     if "Ano" in df_aggrid.columns: gb.configure_column("Ano", width=90)
-
-    # Coluna booleana com checkbox visual
+    
     gb.configure_column(
-        SELECAO_COL,
-        header_name="Selecionar",
-        editable=True,                       # permite editar o valor no rowData
-        cellRenderer='agCheckboxCellRenderer',
-        width=120
+        SELECAO_COL, header_name="Selecionar", editable=True, 
+        cellRenderer='agCheckboxCellRenderer', width=120
     )
     gb.configure_column("index_original", hide=True)
-
-    # JS: ao clicar na célula da coluna, alterna o valor e garante seleção única
+    
     toggle_js = JsCode(f"""
     function(e) {{
       if (e.colDef.field === '{SELECAO_COL}') {{
         const newVal = !e.value;
-        // seta o valor da linha clicada
         e.node.setDataValue('{SELECAO_COL}', newVal);
-
-        // se marcou TRUE, desmarca todas as outras linhas
         if (newVal === true) {{
           e.api.forEachNode((n) => {{
             if (n.id !== e.node.id && n.data['{SELECAO_COL}'] === true) {{
@@ -351,37 +360,23 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
       }}
     }}
     """)
-
-    gb.configure_grid_options(
-        onCellClicked=toggle_js,
-        stopEditingWhenCellsLoseFocus=True,   # força commit do editor
-        suppressRowClickSelection=True        # não usar seleção nativa da linha
-    )
-
+    gb.configure_grid_options(onCellClicked=toggle_js, stopEditingWhenCellsLoseFocus=True, suppressRowClickSelection=True)
     grid_opts = gb.build()
 
-    # FORM: garante captura no submit; AS_INPUT retorna df pós-edição
-    form_key = f"form_{st.session_state.subject_filter}_{st.session_state.search_term}"
-    with st.form(key=form_key):
+    # [SUGESTÃO] Usar chave estática para o form e para o AgGrid
+    with st.form(key="analysis_form"):
         grid_response = AgGrid(
             df_aggrid,
             gridOptions=grid_opts,
-            data_return_mode=DataReturnMode.AS_INPUT,     # <-- recebe o DF editado
-            update_mode=GridUpdateMode.MODEL_CHANGED,     # <-- mudanças refletem no retorno
+            data_return_mode=DataReturnMode.AS_INPUT,
+            update_mode=GridUpdateMode.MODEL_CHANGED,
             fit_columns_on_grid_load=False,
             enable_enterprise_modules=False,
-            key=f"grid_{st.session_state.subject_filter}_{st.session_state.search_term}",
-            reload_data=False,                             # evita reset do grid ao rerun
+            key="main_interactive_grid",
+            reload_data=False, 
         )
         submitted = st.form_submit_button("Analisar Item Selecionado ↓", use_container_width=True)
 
-    # (opcional) bloco de debug
-    with st.expander("Depuração da seleção (payload do AgGrid)"):
-        st.write({k: type(grid_response.get(k)).__name__ for k in grid_response.keys()})
-        st.write("Linhas marcadas:",
-                 pd.DataFrame(grid_response.get("data", [])).query(f"{SELECAO_COL} == True").head())
-
-    # Processa a seleção APÓS o submit, lendo do DF retornado
     if submitted:
         df_return = pd.DataFrame(grid_response.get("data", []))
         if not df_return.empty and SELECAO_COL in df_return.columns:
@@ -396,21 +391,20 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
                 st.warning("Marque apenas **uma** linha por vez.")
         else:
             st.session_state.selected_rows_cache = pd.DataFrame()
-            st.warning("Não foi possível ler a seleção (DF retornado vazio).")
+            st.warning("Não foi possível ler a seleção. Tente selecionar um item e analisar novamente.")
 
     st.divider()
-
-    # --- Abas: leem do cache do estado ---
+    
     selected_rows_df = st.session_state.selected_rows_cache
-
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
+
     with tab_detalhes:
         if not selected_rows_df.empty:
             idx_original = selected_rows_df.iloc[0]['index_original']
             detalhes = df.loc[idx_original]
             st.subheader(detalhes.get('Título', ''))
             st.divider()
-            st.markdown("#### Assuntos"); st.write(detalhes.get('Assuntos', ''))
+            st.markdown("#### Assuntos"); st.write(', '.join(detalhes.get('Assuntos_Processados', [])))
             st.markdown("#### Resumo"); st.write(detalhes.get('Resumo_LLM', ''))
             st.markdown("#### Link para Download")
             link_pdf = detalhes.get('Link_PDF')
@@ -426,7 +420,9 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             st.warning("Dados de similaridade não disponíveis.")
         elif not selected_rows_df.empty:
             id_selecionado = selected_rows_df.iloc[0]['index_original']
-            num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1, key=f"slider_{id_selecionado}")
+            
+            # [SUGESTÃO] Adicionar uma chave única ao slider para evitar reset
+            num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1, key=f"slider_vizinhos_{id_selecionado}")
 
             fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
             st.plotly_chart(fig, use_container_width=True)
@@ -448,7 +444,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
                     else:
                         analysis = "Não há resumos disponíveis para gerar análise."
                         st.warning(analysis)
-
+                
                 with st.container(border=True):
                     st.subheader("Análise Gerada por IA")
                     st.markdown(analysis)
@@ -504,25 +500,25 @@ def render_page_sobre():
     st.title("Sobre o projeto")
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
-    Ela utiliza técnicas de PLN e IA para facilitar a descoberta de conhecimento e a análise de tendências.
-    **Versão 1.0 - 08/25**
+    Ela utiliza técnicas de Processamento de Linguagem Natural (PLN) e Inteligência Artificial (IA) para facilitar a descoberta de conhecimento e a análise de tendências.
+    **Versão 1.1 - 09/25**
     """)
     st.divider()
     with st.container(border=True):
         st.subheader("🔎 1. Explore e Selecione na Tela de Consultas")
-        st.markdown("Use a coluna **Selecionar** para marcar uma única linha e clique em **Analisar Item Selecionado**.")
+        st.markdown("Use a busca simples para filtros rápidos, a busca com IA para explorar temas, ou o filtro por assunto. Para analisar um item, marque-o na coluna **Selecionar** e clique no botão **Analisar Item Selecionado**.")
     with st.container(border=True):
         st.subheader("🧠 2. Descubra Conexões com a IA")
-        st.markdown("Gere grafo de similaridade e sínteses.")
+        st.markdown("Na aba 'Trabalhos Similares', visualize um grafo de documentos semanticamente próximos e use a IA para gerar uma síntese analítica da rede de trabalhos.")
     with st.container(border=True):
         st.subheader("📊 3. Visualize o Panorama no Dashboard")
-        st.markdown("Gráficos agregados por assunto e clusters.")
+        st.markdown("Explore gráficos interativos sobre a produção anual, os assuntos mais frequentes e uma visualização 3D dos clusters temáticos de todo o acervo.")
     st.divider()
     col1, col2 = st.columns([2, 1])
     with col1:
         st.caption("""
             **Autoria do Aplicativo:** Maiko R. Spiess  
-            **Fonte:** Biblioteca Universitária FURB  
+            **Fonte dos Dados:** Biblioteca Universitária FURB  
             **Data da Base de Conhecimento:** 08/2025
         """)
     with col2:
@@ -542,22 +538,25 @@ def main():
         if st.button("Dashboard", use_container_width=True): st.session_state.page = "Dashboard"
         if st.button("Sobre", use_container_width=True): st.session_state.page = "Sobre"
         st.divider()
-        st.image("NET-01.png", use_container_width=True)
+        # [SUGESTÃO] Use um caminho relativo ou verifique se a imagem existe
+        try:
+            st.image("NET-01.png", use_container_width=True)
+        except Exception:
+            st.warning("Logo não encontrado.")
+
 
     df_raw = load_data(CSV_DATA_PATH)
     if df_raw is None:
-        st.error("Falha ao carregar dados."); st.stop()
+        st.error("Falha fatal ao carregar o arquivo de dados. A aplicação não pode continuar."); st.stop()
 
     df = df_raw.rename(columns={"Tipo_Documento": "Tipo de Documento"})
     embeddings = load_embeddings(EMBEDDINGS_PATH)
+    
     if not validate_data(df, embeddings):
-        st.stop()
+        st.error("Falha na validação dos dados. A aplicação não pode continuar."); st.stop()
 
     matriz_similaridade = calculate_similarity_matrix(embeddings)
     subject_options = prepare_subject_list(df)
-
-    if 'index_original' not in df.columns:
-        df['index_original'] = df.index
 
     if st.session_state.page == "Consultas":
         render_page_consultas(df, embeddings, matriz_similaridade, subject_options)
