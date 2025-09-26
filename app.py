@@ -13,7 +13,6 @@ from st_aggrid import (
     GridOptionsBuilder,
     GridUpdateMode,
     DataReturnMode,
-    JsCode,
 )
 import networkx as nx
 import plotly.graph_objects as go
@@ -222,10 +221,11 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
 
     def clear_all_filters():
+        # Quando limpamos os filtros, também limpamos a seleção que depende deles
+        st.session_state.selected_rows_cache = pd.DataFrame()
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
         st.session_state.subject_filter = subject_options[0]
-        st.session_state.selected_rows_cache = pd.DataFrame()
         if 'semantic_query_input' in st.session_state:
             st.session_state.semantic_query_input = ""
 
@@ -250,6 +250,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         st.button("Limpar Filtros e Seleção 🧹", on_click=clear_all_filters, use_container_width=True, type="primary")
 
     df_filtered = df.copy()
+    # Lógica de filtragem... (sem alterações)
     if st.session_state.semantic_term:
         with st.spinner("Buscando por significado..."):
             ranked_indices = search_semantic(st.session_state.semantic_term, embeddings)
@@ -274,6 +275,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
 
     st.divider()
 
+    # Preparação do DataFrame para exibição
     df_para_exibir = df_filtered.copy()
     if 'Assuntos_Processados' in df_para_exibir.columns:
         df_para_exibir["Assuntos"] = df_para_exibir["Assuntos_Processados"].apply(
@@ -284,8 +286,10 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     cols_display_existentes = [c for c in cols_display if c in df_para_exibir.columns]
     df_aggrid = df_para_exibir[cols_display_existentes + ['index_original']].fillna('')
 
+    # Configuração do AgGrid
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
+    
     gb.configure_selection(selection_mode='single', use_checkbox=False)
     
     gb.configure_column("Título", width=500); gb.configure_column("Autor", width=250)
@@ -294,39 +298,42 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     gb.configure_column("index_original", hide=True)
     grid_opts = gb.build()
     
+    # Renderização do AgGrid
     grid_response = AgGrid(
         df_aggrid,
         gridOptions=grid_opts,
         data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.MODEL_CHANGED,
+        update_mode=GridUpdateMode.SELECTION_CHANGED, # Dispara rerun na mudança de seleção
         fit_columns_on_grid_load=False,
         enable_enterprise_modules=False,
         key="main_interactive_grid",
         theme='streamlit'
     )
-    
-    st.button(
-        "Visualizar Detalhes do Item Selecionado",
-        key="view_details_button",
-        use_container_width=True
-    )
 
-    if st.session_state.view_details_button:
-        # [CORREÇÃO] Garante que 'selected_rows' seja uma lista vazia se for None.
-        selected_rows = grid_response.get("selected_rows") or []
-        
-        if len(selected_rows) == 1:
-            st.session_state.selected_rows_cache = pd.DataFrame(selected_rows).copy()
-        else:
-            st.session_state.selected_rows_cache = pd.DataFrame()
-            st.warning("Por favor, selecione uma única linha na tabela para visualizar os detalhes.")
-    
+    # [ALTERAÇÃO PRINCIPAL] - Lógica de atualização de estado simplificada e reativa
+    # Esta lógica agora é a única fonte de verdade para a seleção.
+    # Ela roda a cada vez que a seleção muda no grid.
+    selected_rows = grid_response.get("selected_rows", [])
+    if selected_rows:
+        # Se há uma seleção, atualiza o cache
+        st.session_state.selected_rows_cache = pd.DataFrame(selected_rows).copy()
+    else:
+        # Se a seleção for limpa (por exemplo, por um novo filtro), limpa o cache
+        # Evita que uma seleção antiga persista após uma nova busca
+        if not df_filtered.empty: # Só limpa se a tabela não estiver vazia
+             # Verifica se a seleção cacheada ainda é válida
+            if not st.session_state.selected_rows_cache.empty:
+                cached_idx = st.session_state.selected_rows_cache.iloc[0]['index_original']
+                if cached_idx not in df_filtered['index_original'].values:
+                    st.session_state.selected_rows_cache = pd.DataFrame()
+
     st.divider()
 
     selected_rows_df = st.session_state.selected_rows_cache
     if selected_rows_df.empty:
-        st.info("ℹ️ Para ver detalhes e trabalhos similares, clique em uma linha da tabela e depois no botão 'Visualizar Detalhes'.")
+        st.info("ℹ️ Para ver detalhes e trabalhos similares, clique em uma linha da tabela acima.")
 
+    # As abas abaixo agora leem o estado que foi confiavelmente atualizado acima
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
 
     with tab_detalhes:
@@ -421,12 +428,12 @@ def render_page_sobre():
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
     Ela utiliza técnicas de Processamento de Linguagem Natural (PLN) e Inteligência Artificial (IA) para facilitar a descoberta de conhecimento e a análise de tendências.
-    **Versão 1.5 - 09/25**
+    **Versão 1.6 - 09/25**
     """)
     st.divider()
     with st.container(border=True):
         st.subheader("🔎 1. Explore e Selecione na Tela de Consultas")
-        st.markdown("Use as buscas ou filtros para encontrar trabalhos de seu interesse. Para analisá-los, **clique na linha desejada** na tabela e, em seguida, **clique no botão 'Visualizar Detalhes'** que aparecerá logo abaixo.")
+        st.markdown("Use as buscas ou filtros para encontrar trabalhos de seu interesse. Para analisá-los, **basta clicar em qualquer lugar da linha desejada na tabela** e as abas abaixo serão atualizadas automaticamente.")
     with st.container(border=True):
         st.subheader("🧠 2. Descubra Conexões com a IA")
         st.markdown("Na aba 'Trabalhos Similares', visualize um grafo de documentos semanticamente próximos e use a IA para gerar uma síntese analítica da rede de trabalhos.")
