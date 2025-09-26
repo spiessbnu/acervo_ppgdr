@@ -210,22 +210,6 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
     return fig, nos_da_rede
 
 # --------------------------------------------------------------------------
-# Busca semântica (IA)
-# --------------------------------------------------------------------------
-@st.cache_data(show_spinner=False)
-def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="text-embedding-3-large") -> list:
-    if not query_text.strip():
-        return []
-    try:
-        client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
-        query_embedding = client.embeddings.create(input=[query_text], model=model).data[0].embedding
-        similarities = cosine_similarity([query_embedding], _document_embeddings).flatten()
-        return [i for i in np.argsort(-similarities) if similarities[i] > 0.2][:20]
-    except Exception as e:
-        st.error(f"Erro na busca inteligente: {e}")
-        return []
-
-# --------------------------------------------------------------------------
 # PÁGINAS
 # --------------------------------------------------------------------------
 def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
@@ -253,7 +237,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             semantic_input = st.text_input("Busca semântica (com IA)", placeholder="Qual o tema do seu interesse?", key="semantic_query_input")
             semantic_submitted = st.form_submit_button("Buscar com IA 🧠")
             if semantic_submitted and semantic_input:
-                st.session_state.selected_rows_cache = pd.DataFrame() # Limpa seleção anterior
+                st.session_state.selected_rows_cache = pd.DataFrame()
                 st.session_state.semantic_term = semantic_input
                 st.session_state.search_term = ""
                 st.session_state.subject_filter = subject_options[0]
@@ -302,12 +286,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
 
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
-
-    # [ALTERAÇÃO 1] - Configura a seleção nativa do AgGrid por clique na linha.
-    gb.configure_selection(
-        selection_mode='single', 
-        use_checkbox=False,
-    )
+    gb.configure_selection(selection_mode='single', use_checkbox=False)
     
     gb.configure_column("Título", width=500); gb.configure_column("Autor", width=250)
     gb.configure_column("Orientador", width=250); gb.configure_column("Assuntos", width=350)
@@ -319,24 +298,23 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         df_aggrid,
         gridOptions=grid_opts,
         data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.MODEL_CHANGED, # MODEL_CHANGED captura mais eventos
+        update_mode=GridUpdateMode.MODEL_CHANGED,
         fit_columns_on_grid_load=False,
         enable_enterprise_modules=False,
         key="main_interactive_grid",
         theme='streamlit'
     )
-
-    # [ALTERAÇÃO 2] - Adiciona um botão explícito para acionar a análise.
+    
     st.button(
         "Visualizar Detalhes do Item Selecionado",
         key="view_details_button",
         use_container_width=True
     )
 
-    # [ALTERAÇÃO 3] - A lógica de atualização só roda se o botão for pressionado.
-    # E ela lê o estado MAIS RECENTE da grid_response.
     if st.session_state.view_details_button:
-        selected_rows = grid_response.get("selected_rows", [])
+        # [CORREÇÃO] Garante que 'selected_rows' seja uma lista vazia se for None.
+        selected_rows = grid_response.get("selected_rows") or []
+        
         if len(selected_rows) == 1:
             st.session_state.selected_rows_cache = pd.DataFrame(selected_rows).copy()
         else:
