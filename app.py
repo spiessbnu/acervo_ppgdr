@@ -261,7 +261,7 @@ def render_grid_view(df: pd.DataFrame, subject_options: list):
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
         st.session_state.subject_filter = subject_options[0]
-        st.session_state.selected_item_cache = pd.DataFrame() # Também limpa o item selecionado
+        st.session_state.selected_item_cache = pd.DataFrame()
         if 'semantic_query_input' in st.session_state:
             st.session_state.semantic_query_input = ""
 
@@ -336,19 +336,31 @@ def render_grid_view(df: pd.DataFrame, subject_options: list):
     )
     
     selected_rows = grid_response.get("selected_rows", [])
-
-    if st.button("Visualizar Detalhes do Item Selecionado", use_container_width=True, type="primary"):
-        if len(selected_rows) == 1:
+    
+    # O botão só é exibido se uma linha for de fato selecionada pelo usuário
+    if selected_rows:
+        if st.button("Visualizar Detalhes do Item Selecionado", use_container_width=True, type="primary"):
             st.session_state.selected_item_cache = pd.DataFrame(selected_rows).copy()
             st.session_state.view_mode = 'details'
             st.rerun()
-        else:
-            st.warning("Por favor, selecione uma única linha na tabela antes de clicar em 'Visualizar'.")
+    else:
+        st.info("Clique em uma linha na tabela para habilitar a visualização de detalhes.")
 
 def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
+    # [CORREÇÃO] - Inicializa todas as chaves do session_state aqui, no início da renderização da página.
     if 'view_mode' not in st.session_state:
         st.session_state.view_mode = 'grid'
-    
+    if 'selected_item_cache' not in st.session_state:
+        st.session_state.selected_item_cache = pd.DataFrame()
+    if 'search_term' not in st.session_state:
+        st.session_state.search_term = ""
+    if 'semantic_term' not in st.session_state:
+        st.session_state.semantic_term = ""
+    if 'subject_filter' not in st.session_state:
+        st.session_state.subject_filter = subject_options[0]
+    if 'analysis_cache' not in st.session_state:
+        st.session_state.analysis_cache = {}
+
     if st.session_state.view_mode == 'grid':
         df_with_embeds = df.copy()
         df_with_embeds['embeddings'] = list(embeddings)
@@ -436,7 +448,9 @@ def main():
 
     with st.sidebar:
         st.markdown("<h1 style='color:white;'><b>📚 Acervo PPGDR</b></h1>", unsafe_allow_html=True)
-        if st.button("Consultas", use_container_width=True): st.session_state.view_mode = 'grid'
+        if st.button("Consultas", use_container_width=True): 
+            st.session_state.page = "Consultas"
+            st.session_state.view_mode = 'grid' # Garante que volte para a grade
         if st.button("Dashboard", use_container_width=True): st.session_state.page = "Dashboard"
         if st.button("Sobre", use_container_width=True): st.session_state.page = "Sobre"
         st.divider()
@@ -444,10 +458,6 @@ def main():
             st.image("NET-01.png", use_container_width=True)
         except Exception:
             st.warning("Logo não encontrado.")
-
-    # Inicialização do estado da view da página de consulta
-    if st.session_state.page == "Consultas" and 'view_mode' not in st.session_state:
-        st.session_state.view_mode = 'grid'
 
     df_raw = load_data(CSV_DATA_PATH)
     if df_raw is None:
