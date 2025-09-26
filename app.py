@@ -31,8 +31,6 @@ import uuid
 # --------------------------------------------------------------------------
 CSV_DATA_PATH = "dados_finais_com_resumo_llm.csv"
 EMBEDDINGS_PATH = "openai_embeddings_concatenado_large.npy"
-# [REMOVIDO] A coluna de seleção customizada não é mais necessária.
-# SELECAO_COL = "_selecionado"
 
 # --------------------------------------------------------------------------
 # FUNÇÃO 1: Configuração da página do Streamlit
@@ -299,26 +297,23 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Orientador", "Assuntos"]
     cols_display_existentes = [c for c in cols_display if c in df_para_exibir.columns]
-    
-    # [CORREÇÃO] Ocultamos o index_original na exibição, mas ele continua nos dados
     df_aggrid = df_para_exibir[cols_display_existentes + ['index_original']].fillna('')
 
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
 
-    # [CORREÇÃO 1] - Configura a seleção nativa do AgGrid
-    # Esta é a forma correta e robusta de implementar a seleção de linha única.
     pre_selected_row_index = None
     if not st.session_state.selected_rows_cache.empty:
         cached_idx = st.session_state.selected_rows_cache.iloc[0]['index_original']
-        # Precisamos encontrar o índice da linha no dataframe *filtrado*
         if cached_idx in df_aggrid['index_original'].values:
-            pre_selected_row_index = df_aggrid[df_aggrid['index_original'] == cached_idx].index[0]
+            # [CORREÇÃO DEFINITIVA] - Converte o índice encontrado para um int nativo do Python.
+            # O .index[0] retorna um tipo NumPy (ex: int64) que não é serializável para JSON.
+            pre_selected_row_index = int(df_aggrid[df_aggrid['index_original'] == cached_idx].index[0])
             
     gb.configure_selection(
         selection_mode='single',
         use_checkbox=True,
-        header_checkbox=False, # Opcional: desativa a checkbox do cabeçalho
+        header_checkbox=False,
         pre_selected_rows=[pre_selected_row_index] if pre_selected_row_index is not None else []
     )
     
@@ -332,22 +327,25 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         df_aggrid,
         gridOptions=grid_opts,
         data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.SELECTION_CHANGED, # Mais específico para seleção
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
         fit_columns_on_grid_load=False,
         enable_enterprise_modules=False,
         allow_unsafe_jscode=True,
         key="main_interactive_grid"
     )
 
-    # [CORREÇÃO 2] - A lógica agora lê 'selected_rows' que é o output padrão para seleções
     selected_rows = grid_response.get("selected_rows", [])
-    if selected_rows:
-        # Pega a linha selecionada (será sempre apenas uma devido ao `selection_mode='single'`)
-        selecao_df = pd.DataFrame(selected_rows)
-        st.session_state.selected_rows_cache = selecao_df.copy()
-    else:
-        st.session_state.selected_rows_cache = pd.DataFrame()
     
+    idx_atual = st.session_state.selected_rows_cache['index_original'].iloc[0] if not st.session_state.selected_rows_cache.empty else None
+    idx_novo = selected_rows[0]['index_original'] if selected_rows else None
+
+    if idx_atual != idx_novo:
+        if selected_rows:
+            st.session_state.selected_rows_cache = pd.DataFrame(selected_rows).copy()
+        else:
+            st.session_state.selected_rows_cache = pd.DataFrame()
+        st.rerun()
+
     st.divider()
 
     selected_rows_df = st.session_state.selected_rows_cache
