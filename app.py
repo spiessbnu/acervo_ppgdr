@@ -232,7 +232,7 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
 def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
     st.title("Consulta ao Acervo de Dissertações e Teses")
 
-    # --- Estado da Sessão ---
+    # --- Estado (sem alterações) ---
     if 'selected_rows_cache' not in st.session_state:
         st.session_state.selected_rows_cache = pd.DataFrame()
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
@@ -240,7 +240,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
     if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
 
-    # --- Lógica de Filtros ---
+    # --- Filtros (sem alterações) ---
     def clear_all_filters():
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
@@ -269,10 +269,8 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     with filter_col2:
         st.button("Limpar Filtros e Seleção 🧹", on_click=clear_all_filters, use_container_width=True, type="primary")
 
-    # --- Aplicação dos Filtros ---
+    # --- Aplicando filtros (sem alterações) ---
     df_filtered = df.copy()
-    
-    # A ordem de aplicação agora é: busca (semântica ou simples), depois assunto.
     if st.session_state.semantic_term:
         with st.spinner("Buscando por significado..."):
             ranked_indices = search_semantic(st.session_state.semantic_term, embeddings)
@@ -286,7 +284,6 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         df_search = df_filtered.copy()
         df_search['Assuntos_str_search'] = df_search['Assuntos_Processados'].apply(lambda x: ', '.join(map(str, x)))
         cols_to_search = ["Autor", "Título", "Resumo_LLM", "Orientador", "Assuntos_str_search"]
-        
         mask = df_search[[c for c in cols_to_search if c in df_search.columns]].fillna('').astype(str).apply(
             lambda col: col.str.contains(term, case=False, na=False)
         ).any(axis=1)
@@ -298,16 +295,13 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         df_filtered = df_filtered[mask_subject]
 
     st.divider()
-
-    # --- Tabela Interativa (AgGrid) ---
+    
+    # --- Tabela e Processamento da Seleção ---
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Orientador", "Assuntos"]
     cols_display_existentes = [c for c in cols_display if c in df_filtered.columns]
-
     df_aggrid_source = df_filtered[cols_display_existentes + ['index_original']].copy()
-    
     if "Assuntos" in df_aggrid_source.columns:
-        df_aggrid_source["Assuntos"] = df_aggrid_source["Assuntos"].apply(lambda x: ', '.join(x) if isinstance(x, list) else str(x))
-    
+        df_aggrid_source["Assuntos"] = df_aggrid_source["Assuntos_Processados"].apply(lambda x: ', '.join(x) if isinstance(x, list) else str(x))
     df_aggrid = df_aggrid_source.fillna('')
     df_aggrid[SELECAO_COL] = False
     
@@ -324,25 +318,19 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     gb.configure_column(SELECAO_COL, header_name="Analisar", editable=True, cellRenderer='agCheckboxCellRenderer', width=120)
     gb.configure_column("index_original", hide=True)
 
-    toggle_js = JsCode(f"""
+    # [CORREÇÃO 1] - Simplificação do JavaScript
+    # O JS agora apenas alterna o valor da célula clicada. A lógica de seleção única
+    # será tratada no Python, que é mais robusto.
+    simple_toggle_js = JsCode(f"""
     function(e) {{
       if (e.colDef.field === '{SELECAO_COL}') {{
-        const newVal = !e.value;
-        e.node.setDataValue('{SELECAO_COL}', newVal);
-        if (newVal === true) {{
-          e.api.forEachNode((n) => {{
-            if (n.id !== e.node.id && n.data['{SELECAO_COL}'] === true) {{
-              n.setDataValue('{SELECAO_COL}', false);
-            }}
-          }});
-        }}
+        e.node.setDataValue('{SELECAO_COL}', !e.value);
       }}
     }}
     """)
-    gb.configure_grid_options(onCellClicked=toggle_js, stopEditingWhenCellsLoseFocus=True, suppressRowClickSelection=True)
+    gb.configure_grid_options(onCellClicked=simple_toggle_js, stopEditingWhenCellsLoseFocus=True, suppressRowClickSelection=True)
     grid_opts = gb.build()
-
-    # Chamada do AgGrid fora do formulário
+    
     grid_response = AgGrid(
         df_aggrid,
         gridOptions=grid_opts,
@@ -354,15 +342,30 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         key="main_interactive_grid"
     )
 
-    # Lógica de atualização reativa
+    # [CORREÇÃO 2] - Lógica de Seleção Única implementada em Python
+    # Esta lógica garante que apenas uma linha seja mantida no cache de seleção.
     df_return = pd.DataFrame(grid_response.get("data", []))
     if not df_return.empty and SELECAO_COL in df_return.columns:
         escolhidos = df_return[df_return[SELECAO_COL] == True]
-        st.session_state.selected_rows_cache = escolhidos.copy()
+        
+        selecao_final = pd.DataFrame() # Começa com uma seleção vazia
+        
+        if not escolhidos.empty:
+            # Se houver uma ou mais linhas selecionadas, pega apenas a ÚLTIMA
+            selecao_final = escolhidos.tail(1).copy()
 
+        # Compara a seleção atual com a que estava no cache para decidir se um rerun é necessário
+        # Isso evita reruns desnecessários se o usuário clicar na mesma linha
+        idx_atual = st.session_state.selected_rows_cache['index_original'].iloc[0] if not st.session_state.selected_rows_cache.empty else None
+        idx_novo = selecao_final['index_original'].iloc[0] if not selecao_final.empty else None
+
+        if idx_atual != idx_novo:
+            st.session_state.selected_rows_cache = selecao_final
+            st.rerun() # Força o rerun para atualizar as abas imediatamente
+    
     st.divider()
 
-    # --- Abas de Análise ---
+    # --- Abas de Análise (lógica inalterada, lerá o estado já corrigido) ---
     selected_rows_df = st.session_state.selected_rows_cache
     
     if selected_rows_df.empty:
@@ -418,7 +421,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
                     st.markdown(analysis)
         else:
             st.info("Nenhum item selecionado para mostrar similares.")
-
+            
 def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     st.title("Dashboard de Análise do Acervo")
     st.markdown("---")
