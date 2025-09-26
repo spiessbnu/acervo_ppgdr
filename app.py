@@ -36,7 +36,7 @@ EMBEDDINGS_PATH = "openai_embeddings_concatenado_large.npy"
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Acervo de Dissertações e Teses PPGDR v1",
+        page_title="Acervo de Dissertações e Teses PPGDR v1.8",
         page_icon="📚",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -192,6 +192,10 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         query_embedding = client.embeddings.create(input=[query_text], model=model).data[0].embedding
         similarities = cosine_similarity([query_embedding], _document_embeddings).flatten()
+        # st-aggrid retorna uma lista de embeddings, então precisamos converter para a forma correta
+        if isinstance(_document_embeddings, list):
+            _document_embeddings = np.array(_document_embeddings)
+        similarities = cosine_similarity([query_embedding], _document_embeddings).flatten()
         return [i for i in np.argsort(-similarities) if similarities[i] > 0.2][:20]
     except Exception as e:
         st.error(f"Erro na busca inteligente: {e}"); return []
@@ -288,7 +292,8 @@ def render_grid_view(df: pd.DataFrame, subject_options: list):
     df_filtered = df.copy()
     if st.session_state.semantic_term:
         with st.spinner("Buscando por significado..."):
-            ranked_indices = search_semantic(st.session_state.semantic_term, df.embeddings.to_list())
+            # Passa a lista de embeddings corretamente
+            ranked_indices = search_semantic(st.session_state.semantic_term, np.array(df.embeddings.to_list()))
         if ranked_indices:
             df_filtered = df.loc[ranked_indices]
         else:
@@ -335,19 +340,18 @@ def render_grid_view(df: pd.DataFrame, subject_options: list):
         enable_enterprise_modules=False, key="main_interactive_grid", theme='streamlit'
     )
     
-    selected_rows = grid_response.get("selected_rows", [])
-    
-    # O botão só é exibido se uma linha for de fato selecionada pelo usuário
-    if selected_rows:
-        if st.button("Visualizar Detalhes do Item Selecionado", use_container_width=True, type="primary"):
+    # [ALTERAÇÃO PRINCIPAL] - O botão agora é a única forma de mudar de visão.
+    # Ele fica sempre visível.
+    if st.button("Visualizar Detalhes do Item Selecionado", use_container_width=True, type="primary"):
+        selected_rows = grid_response.get("selected_rows") or []
+        if len(selected_rows) == 1:
             st.session_state.selected_item_cache = pd.DataFrame(selected_rows).copy()
             st.session_state.view_mode = 'details'
             st.rerun()
-    else:
-        st.info("Clique em uma linha na tabela para habilitar a visualização de detalhes.")
+        else:
+            st.warning("Por favor, selecione uma única linha na tabela antes de clicar em 'Visualizar'.")
 
 def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
-    # [CORREÇÃO] - Inicializa todas as chaves do session_state aqui, no início da renderização da página.
     if 'view_mode' not in st.session_state:
         st.session_state.view_mode = 'grid'
     if 'selected_item_cache' not in st.session_state:
@@ -363,6 +367,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
 
     if st.session_state.view_mode == 'grid':
         df_with_embeds = df.copy()
+        # Passar os embeddings como uma lista na coluna é uma forma de mantê-los alinhados com os filtros
         df_with_embeds['embeddings'] = list(embeddings)
         render_grid_view(df_with_embeds, subject_options)
     elif st.session_state.view_mode == 'details':
@@ -415,7 +420,7 @@ def render_page_sobre():
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
     Ela utiliza técnicas de Processamento de Linguagem Natural (PLN) e Inteligência Artificial (IA) para facilitar a descoberta de conhecimento e a análise de tendências.
-    **Versão 1.7 - 09/25**
+    **Versão 1.8 - 09/25**
     """)
     st.divider()
     with st.container(border=True):
@@ -450,7 +455,7 @@ def main():
         st.markdown("<h1 style='color:white;'><b>📚 Acervo PPGDR</b></h1>", unsafe_allow_html=True)
         if st.button("Consultas", use_container_width=True): 
             st.session_state.page = "Consultas"
-            st.session_state.view_mode = 'grid' # Garante que volte para a grade
+            st.session_state.view_mode = 'grid'
         if st.button("Dashboard", use_container_width=True): st.session_state.page = "Dashboard"
         if st.button("Sobre", use_container_width=True): st.session_state.page = "Sobre"
         st.divider()
@@ -458,6 +463,9 @@ def main():
             st.image("NET-01.png", use_container_width=True)
         except Exception:
             st.warning("Logo não encontrado.")
+
+    if st.session_state.page == "Consultas" and 'view_mode' not in st.session_state:
+        st.session_state.view_mode = 'grid'
 
     df_raw = load_data(CSV_DATA_PATH)
     if df_raw is None:
