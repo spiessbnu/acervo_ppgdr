@@ -58,12 +58,10 @@ def load_data(path: str) -> pd.DataFrame:
     try:
         df = pd.read_csv(path)
         if 'Assuntos_Lista' in df.columns:
-            # Garante que a coluna de assuntos processados exista para os filtros
             df['Assuntos_Processados'] = df['Assuntos_Lista'].apply(safe_literal_eval)
         else:
             df['Assuntos_Processados'] = [[] for _ in range(len(df))]
         
-        # [SUGESTÃO] Adiciona um índice original para rastreamento estável
         if 'index_original' not in df.columns:
             df['index_original'] = df.index
             
@@ -248,7 +246,6 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         st.session_state.semantic_term = ""
         st.session_state.subject_filter = subject_options[0]
         st.session_state.selected_rows_cache = pd.DataFrame()
-        # [SUGESTÃO] Limpa também o input da busca semântica se houver
         if 'semantic_query_input' in st.session_state:
             st.session_state.semantic_query_input = ""
         
@@ -257,13 +254,11 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         st.text_input("Busca simples por palavra-chave", key="search_term", placeholder="Filtre por autor, título, resumo...")
     
     with search_col2:
-        # [SUGESTÃO] Usar um form para a busca semântica para evitar chamadas excessivas à API
         with st.form(key="semantic_form"):
             semantic_input = st.text_input("Busca semântica (com IA)", placeholder="Qual o tema do seu interesse?", key="semantic_query_input")
             semantic_submitted = st.form_submit_button("Buscar com IA 🧠")
             if semantic_submitted and semantic_input:
                 st.session_state.semantic_term = semantic_input
-                # Limpa outros filtros para evitar confusão
                 st.session_state.search_term = ""
                 st.session_state.subject_filter = subject_options[0]
                 
@@ -285,25 +280,22 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             df_filtered = pd.DataFrame(columns=df.columns)
             st.warning("Nenhum resultado encontrado para a busca semântica.")
     elif st.session_state.search_term:
-        cols_pref = ["Autor", "Título", "Assuntos", "Resumo_LLM"]
-        cols_to_search = [c for c in cols_pref if c in df_filtered.columns]
+        term = st.session_state.search_term
+        cols_to_search = ["Autor", "Título", "Resumo_LLM", "Orientador"]
+        # Cria uma cópia temporária para a busca, com assuntos como string
+        df_search = df_filtered.copy()
+        df_search['Assuntos_str_search'] = df_search['Assuntos_Processados'].apply(lambda x: ', '.join(map(str, x)))
+        cols_to_search.append('Assuntos_str_search')
         
-        # [CORREÇÃO] Garante que a coluna de Assuntos (se for lista) seja convertida para string antes da busca
-        if "Assuntos" not in cols_to_search and "Assuntos_Processados" in df_filtered.columns:
-            df_filtered["Assuntos_str_search"] = df_filtered["Assuntos_Processados"].apply(lambda lst: ", ".join(map(str, lst)))
-            cols_to_search.append("Assuntos_str_search")
-            
-        if cols_to_search:
-            mask = df_filtered[cols_to_search].fillna('').astype(str).apply(
-                lambda col: col.str.contains(st.session_state.search_term, case=False, na=False)
-            ).any(axis=1)
-            df_filtered = df_filtered[mask]
+        mask = df_search[cols_to_search].fillna('').astype(str).apply(
+            lambda col: col.str.contains(term, case=False, na=False)
+        ).any(axis=1)
+        df_filtered = df_filtered[mask]
     
     selected_subject = st.session_state.get('subject_filter', subject_options[0])
     if selected_subject != '-- Selecione um Assunto --':
-        if 'Assuntos_Processados' in df_filtered.columns:
-            mask_subject = df_filtered['Assuntos_Processados'].apply(lambda lista: selected_subject in lista)
-            df_filtered = df_filtered[mask_subject]
+        mask_subject = df_filtered['Assuntos_Processados'].apply(lambda lista: selected_subject in lista)
+        df_filtered = df_filtered[mask_subject]
 
     st.divider()
 
@@ -312,15 +304,14 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     if "Assuntos" in df.columns: cols_display.append("Assuntos")
     if "Orientador" in df.columns: cols_display.append("Orientador")
 
-    df_aggrid_source = df_filtered.copy()
+    df_aggrid_source = df_filtered[cols_display + ['index_original']].copy()
     
-    # [CORREÇÃO] Converte colunas com listas para strings antes de exibir no AgGrid para evitar erro de serialização JSON
+    # [CORREÇÃO 1] Trata tanto listas quanto valores nulos (NaN) para garantir serialização JSON
     if "Assuntos" in df_aggrid_source.columns:
-        df_aggrid_source["Assuntos"] = df_aggrid_source["Assuntos_Processados"].apply(
+        df_aggrid_source["Assuntos"] = df_aggrid_source["Assuntos"].apply(
             lambda x: ', '.join(x) if isinstance(x, list) else str(x)
         )
-        
-    df_aggrid = df_aggrid_source[cols_display + ['index_original']].copy()
+    df_aggrid = df_aggrid_source.fillna('') # Converte todos os NaN restantes para string vazia
     
     if SELECAO_COL not in df_aggrid.columns:
         df_aggrid[SELECAO_COL] = False
@@ -332,12 +323,12 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
 
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
-    if "Título" in df_aggrid.columns: gb.configure_column("Título", width=500)
-    if "Autor" in df_aggrid.columns: gb.configure_column("Autor", width=250)
-    if "Orientador" in df_aggrid.columns: gb.configure_column("Orientador", width=250)
-    if "Assuntos" in df_aggrid.columns: gb.configure_column("Assuntos", width=350)
-    if "Tipo de Documento" in df_aggrid.columns: gb.configure_column("Tipo de Documento", width=150)
-    if "Ano" in df_aggrid.columns: gb.configure_column("Ano", width=90)
+    gb.configure_column("Título", width=500)
+    gb.configure_column("Autor", width=250)
+    gb.configure_column("Orientador", width=250)
+    gb.configure_column("Assuntos", width=350)
+    gb.configure_column("Tipo de Documento", width=150)
+    gb.configure_column("Ano", width=90)
     
     gb.configure_column(
         SELECAO_COL, header_name="Selecionar", editable=True, 
@@ -363,7 +354,6 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     gb.configure_grid_options(onCellClicked=toggle_js, stopEditingWhenCellsLoseFocus=True, suppressRowClickSelection=True)
     grid_opts = gb.build()
 
-    # [SUGESTÃO] Usar chave estática para o form e para o AgGrid
     with st.form(key="analysis_form"):
         grid_response = AgGrid(
             df_aggrid,
@@ -372,8 +362,9 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             update_mode=GridUpdateMode.MODEL_CHANGED,
             fit_columns_on_grid_load=False,
             enable_enterprise_modules=False,
-            key="main_interactive_grid",
-            reload_data=False, 
+            # [CORREÇÃO/SUGESTÃO 2] Adicionado para permitir JS e removido reload_data
+            allow_unsafe_jscode=True, 
+            key="main_interactive_grid"
         )
         submitted = st.form_submit_button("Analisar Item Selecionado ↓", use_container_width=True)
 
@@ -382,16 +373,13 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         if not df_return.empty and SELECAO_COL in df_return.columns:
             escolhidos = df_return[df_return[SELECAO_COL] == True]
             if len(escolhidos) == 1:
-                st.session_state.selected_rows_cache = escolhidos[['index_original'] + [c for c in cols_display if c in df_return.columns]]
-            elif len(escolhidos) == 0:
-                st.session_state.selected_rows_cache = pd.DataFrame()
-                st.warning("Marque uma linha na coluna 'Selecionar' antes de clicar.")
+                st.session_state.selected_rows_cache = escolhidos
             else:
                 st.session_state.selected_rows_cache = pd.DataFrame()
-                st.warning("Marque apenas **uma** linha por vez.")
+                st.warning("Por favor, marque apenas **uma** linha por vez para análise.")
         else:
             st.session_state.selected_rows_cache = pd.DataFrame()
-            st.warning("Não foi possível ler a seleção. Tente selecionar um item e analisar novamente.")
+            st.warning("Nenhuma linha selecionada. Marque uma na tabela e clique em analisar.")
 
     st.divider()
     
@@ -421,7 +409,6 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         elif not selected_rows_df.empty:
             id_selecionado = selected_rows_df.iloc[0]['index_original']
             
-            # [SUGESTÃO] Adicionar uma chave única ao slider para evitar reset
             num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1, key=f"slider_vizinhos_{id_selecionado}")
 
             fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
@@ -451,6 +438,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         else:
             st.info("Selecione um registro, clique em 'Analisar Item Selecionado' e veja aqui os trabalhos similares.")
 
+# O restante do código (render_page_dashboard, render_page_sobre, main) permanece o mesmo
 def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     st.title("Dashboard de Análise do Acervo")
     st.markdown("---")
@@ -538,12 +526,10 @@ def main():
         if st.button("Dashboard", use_container_width=True): st.session_state.page = "Dashboard"
         if st.button("Sobre", use_container_width=True): st.session_state.page = "Sobre"
         st.divider()
-        # [SUGESTÃO] Use um caminho relativo ou verifique se a imagem existe
         try:
             st.image("NET-01.png", use_container_width=True)
         except Exception:
             st.warning("Logo não encontrado.")
-
 
     df_raw = load_data(CSV_DATA_PATH)
     if df_raw is None:
