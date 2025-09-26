@@ -36,7 +36,7 @@ EMBEDDINGS_PATH = "openai_embeddings_concatenado_large.npy"
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Acervo de Dissertações e Teses PPGDR v2.0",
+        page_title="Acervo de Dissertações e Teses PPGDR v2.0 - TESTE",
         page_icon="📚",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -333,25 +333,23 @@ def render_grid_view(df: pd.DataFrame, subject_options: list):
         enable_enterprise_modules=False, key="main_interactive_grid", theme='streamlit'
     )
     
-    # [ALTERAÇÃO CRÍTICA 1] - A seleção é salva no estado em CADA execução.
-    # Isso garante que a informação esteja disponível para o botão no próximo rerun.
-    st.session_state.active_grid_selection = pd.DataFrame(grid_response.get("selected_rows", []))
-    
-    # [ALTERAÇÃO CRÍTICA 2] - O botão agora é a única fonte de verdade para a MUDANÇA DE TELA.
-    if st.button("Visualizar Detalhes do Item Selecionado", use_container_width=True, type="primary"):
-        # Ele lê a seleção que foi salva no passo anterior.
-        if not st.session_state.active_grid_selection.empty:
-            st.session_state.selected_item_cache = st.session_state.active_grid_selection.copy()
-            st.session_state.view_mode = 'details'
-            st.rerun()
-        else:
-            st.warning("Por favor, selecione uma linha na tabela antes de clicar em 'Visualizar'.")
+    # --- [INÍCIO DO CÓDIGO DE TESTE] ---
+    if st.button("Testar Popup", use_container_width=True, type="primary"):
+        st.success("Hello, World! O botão foi clicado e a mensagem apareceu com sucesso.")
+        # A lógica original foi comentada para isolar o teste do botão.
+        # selected_rows = grid_response.get("selected_rows") or []
+        # if len(selected_rows) == 1:
+        #     st.session_state.selected_item_cache = pd.DataFrame(selected_rows).copy()
+        #     st.session_state.view_mode = 'details'
+        #     st.rerun()
+        # else:
+        #     st.warning("Por favor, selecione uma única linha na tabela antes de clicar em 'Visualizar'.")
+    # --- [FIM DO CÓDIGO DE TESTE] ---
+
 
 def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
-    # Inicialização centralizada de todas as chaves do session_state
     if 'view_mode' not in st.session_state: st.session_state.view_mode = 'grid'
     if 'selected_item_cache' not in st.session_state: st.session_state.selected_item_cache = pd.DataFrame()
-    if 'active_grid_selection' not in st.session_state: st.session_state.active_grid_selection = pd.DataFrame()
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
     if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
