@@ -232,22 +232,18 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
 def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
     st.title("Consulta ao Acervo de Dissertações e Teses")
 
-    # --- Estado (sem alterações) ---
-    if 'selected_rows_cache' not in st.session_state:
-        st.session_state.selected_rows_cache = pd.DataFrame()
+    if 'selected_rows_cache' not in st.session_state: st.session_state.selected_rows_cache = pd.DataFrame()
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
     if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
     if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
 
-    # --- Filtros (sem alterações) ---
     def clear_all_filters():
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
         st.session_state.subject_filter = subject_options[0]
         st.session_state.selected_rows_cache = pd.DataFrame()
-        if 'semantic_query_input' in st.session_state:
-            st.session_state.semantic_query_input = ""
+        if 'semantic_query_input' in st.session_state: st.session_state.semantic_query_input = ""
         st.rerun()
 
     search_col1, search_col2 = st.columns(2)
@@ -269,7 +265,6 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     with filter_col2:
         st.button("Limpar Filtros e Seleção 🧹", on_click=clear_all_filters, use_container_width=True, type="primary")
 
-    # --- Aplicando filtros (sem alterações) ---
     df_filtered = df.copy()
     if st.session_state.semantic_term:
         with st.spinner("Buscando por significado..."):
@@ -277,8 +272,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         if ranked_indices:
             df_filtered = df.loc[ranked_indices]
         else:
-            df_filtered = pd.DataFrame(columns=df.columns)
-            st.warning("Nenhum resultado encontrado para a busca semântica.")
+            df_filtered = pd.DataFrame(columns=df.columns); st.warning("Nenhum resultado para a busca semântica.")
     elif st.session_state.search_term:
         term = st.session_state.search_term
         df_search = df_filtered.copy()
@@ -295,14 +289,21 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         df_filtered = df_filtered[mask_subject]
 
     st.divider()
+
+    # --- Tabela Interativa e Processamento da Seleção ---
     
-    # --- Tabela e Processamento da Seleção ---
+    # [CORREÇÃO] A conversão de dados e seleção de colunas é feita aqui.
+    df_para_exibir = df_filtered.copy()
+    
+    if 'Assuntos_Processados' in df_para_exibir.columns:
+        df_para_exibir["Assuntos"] = df_para_exibir["Assuntos_Processados"].apply(
+            lambda x: ', '.join(map(str, x)) if isinstance(x, list) else str(x)
+        )
+    
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Orientador", "Assuntos"]
-    cols_display_existentes = [c for c in cols_display if c in df_filtered.columns]
-    df_aggrid_source = df_filtered[cols_display_existentes + ['index_original']].copy()
-    if "Assuntos" in df_aggrid_source.columns:
-        df_aggrid_source["Assuntos"] = df_aggrid_source["Assuntos_Processados"].apply(lambda x: ', '.join(x) if isinstance(x, list) else str(x))
-    df_aggrid = df_aggrid_source.fillna('')
+    cols_display_existentes = [c for c in cols_display if c in df_para_exibir.columns]
+    
+    df_aggrid = df_para_exibir[cols_display_existentes + ['index_original']].fillna('')
     df_aggrid[SELECAO_COL] = False
     
     if not st.session_state.selected_rows_cache.empty:
@@ -318,9 +319,6 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     gb.configure_column(SELECAO_COL, header_name="Analisar", editable=True, cellRenderer='agCheckboxCellRenderer', width=120)
     gb.configure_column("index_original", hide=True)
 
-    # [CORREÇÃO 1] - Simplificação do JavaScript
-    # O JS agora apenas alterna o valor da célula clicada. A lógica de seleção única
-    # será tratada no Python, que é mais robusto.
     simple_toggle_js = JsCode(f"""
     function(e) {{
       if (e.colDef.field === '{SELECAO_COL}') {{
@@ -342,32 +340,24 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         key="main_interactive_grid"
     )
 
-    # [CORREÇÃO 2] - Lógica de Seleção Única implementada em Python
-    # Esta lógica garante que apenas uma linha seja mantida no cache de seleção.
     df_return = pd.DataFrame(grid_response.get("data", []))
     if not df_return.empty and SELECAO_COL in df_return.columns:
         escolhidos = df_return[df_return[SELECAO_COL] == True]
         
-        selecao_final = pd.DataFrame() # Começa com uma seleção vazia
-        
+        selecao_final = pd.DataFrame()
         if not escolhidos.empty:
-            # Se houver uma ou mais linhas selecionadas, pega apenas a ÚLTIMA
             selecao_final = escolhidos.tail(1).copy()
 
-        # Compara a seleção atual com a que estava no cache para decidir se um rerun é necessário
-        # Isso evita reruns desnecessários se o usuário clicar na mesma linha
         idx_atual = st.session_state.selected_rows_cache['index_original'].iloc[0] if not st.session_state.selected_rows_cache.empty else None
         idx_novo = selecao_final['index_original'].iloc[0] if not selecao_final.empty else None
 
         if idx_atual != idx_novo:
             st.session_state.selected_rows_cache = selecao_final
-            st.rerun() # Força o rerun para atualizar as abas imediatamente
+            st.rerun()
     
     st.divider()
 
-    # --- Abas de Análise (lógica inalterada, lerá o estado já corrigido) ---
     selected_rows_df = st.session_state.selected_rows_cache
-    
     if selected_rows_df.empty:
         st.info("ℹ️ Para ver detalhes e trabalhos similares, marque uma linha na coluna 'Analisar' da tabela acima.")
 
@@ -401,12 +391,10 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
             st.dataframe(df_similares, use_container_width=True, hide_index=True)
             st.divider()
-
             if st.button("Gerar análise da rede de trabalhos com IA 🧠", key=f"btn_analise_{id_selecionado}"):
                 cache_key = (id_selecionado, num_vizinhos)
                 if cache_key in st.session_state.analysis_cache:
-                    analysis = st.session_state.analysis_cache[cache_key]
-                    st.toast("Reexibindo análise em cache. ⚡")
+                    analysis = st.session_state.analysis_cache[cache_key]; st.toast("Reexibindo análise em cache. ⚡")
                 else:
                     summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
                     if not summaries_to_analyze.empty:
@@ -414,14 +402,12 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
                             analysis = get_ai_synthesis("\n\n---\n\n".join(summaries_to_analyze))
                             st.session_state.analysis_cache[cache_key] = analysis
                     else:
-                        analysis = "Não há resumos disponíveis para gerar análise."
-                        st.warning(analysis)
+                        analysis = "Não há resumos disponíveis para gerar análise."; st.warning(analysis)
                 with st.container(border=True):
-                    st.subheader("Análise Gerada por IA")
-                    st.markdown(analysis)
+                    st.subheader("Análise Gerada por IA"); st.markdown(analysis)
         else:
             st.info("Nenhum item selecionado para mostrar similares.")
-            
+
 def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     st.title("Dashboard de Análise do Acervo")
     st.markdown("---")
