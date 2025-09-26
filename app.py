@@ -253,6 +253,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             semantic_input = st.text_input("Busca semântica (com IA)", placeholder="Qual o tema do seu interesse?", key="semantic_query_input")
             semantic_submitted = st.form_submit_button("Buscar com IA 🧠")
             if semantic_submitted and semantic_input:
+                st.session_state.selected_rows_cache = pd.DataFrame() # Limpa seleção anterior
                 st.session_state.semantic_term = semantic_input
                 st.session_state.search_term = ""
                 st.session_state.subject_filter = subject_options[0]
@@ -302,13 +303,10 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
 
-    # [ALTERAÇÃO PRINCIPAL 1] - Configuração da seleção nativa do AgGrid por clique na linha.
-    # Removido 'use_checkbox=True' para que a linha inteira seja clicável.
+    # [ALTERAÇÃO 1] - Configura a seleção nativa do AgGrid por clique na linha.
     gb.configure_selection(
         selection_mode='single', 
-        use_checkbox=False, # <-- MUDANÇA IMPORTANTE
-        rowMultiSelectWithClick=False,
-        suppressRowDeselection=False
+        use_checkbox=False,
     )
     
     gb.configure_column("Título", width=500); gb.configure_column("Autor", width=250)
@@ -321,29 +319,40 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         df_aggrid,
         gridOptions=grid_opts,
         data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        update_mode=GridUpdateMode.MODEL_CHANGED, # MODEL_CHANGED captura mais eventos
         fit_columns_on_grid_load=False,
         enable_enterprise_modules=False,
         key="main_interactive_grid",
-        # [ALTERAÇÃO PRINCIPAL 2] - Tema visual para destacar a seleção
-        theme='streamlit' 
+        theme='streamlit'
     )
 
-    # [ALTERAÇÃO PRINCIPAL 3] - Lógica de atualização simplificada e direta.
-    selected_rows = grid_response.get("selected_rows", [])
-    st.session_state.selected_rows_cache = pd.DataFrame(selected_rows)
+    # [ALTERAÇÃO 2] - Adiciona um botão explícito para acionar a análise.
+    st.button(
+        "Visualizar Detalhes do Item Selecionado",
+        key="view_details_button",
+        use_container_width=True
+    )
 
+    # [ALTERAÇÃO 3] - A lógica de atualização só roda se o botão for pressionado.
+    # E ela lê o estado MAIS RECENTE da grid_response.
+    if st.session_state.view_details_button:
+        selected_rows = grid_response.get("selected_rows", [])
+        if len(selected_rows) == 1:
+            st.session_state.selected_rows_cache = pd.DataFrame(selected_rows).copy()
+        else:
+            st.session_state.selected_rows_cache = pd.DataFrame()
+            st.warning("Por favor, selecione uma única linha na tabela para visualizar os detalhes.")
+    
     st.divider()
 
     selected_rows_df = st.session_state.selected_rows_cache
     if selected_rows_df.empty:
-        st.info("ℹ️ Para ver detalhes e trabalhos similares, clique em uma linha da tabela acima.")
+        st.info("ℹ️ Para ver detalhes e trabalhos similares, clique em uma linha da tabela e depois no botão 'Visualizar Detalhes'.")
 
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
 
     with tab_detalhes:
         if not selected_rows_df.empty:
-            # A coluna '_selectedRowNodeInfo' é adicionada pelo AgGrid, usamos 'index_original'
             idx_original = selected_rows_df.iloc[0]['index_original']
             detalhes = df.loc[idx_original]
             st.subheader(detalhes.get('Título', ''))
@@ -439,7 +448,7 @@ def render_page_sobre():
     st.divider()
     with st.container(border=True):
         st.subheader("🔎 1. Explore e Selecione na Tela de Consultas")
-        st.markdown("Use a busca simples, a busca com IA ou o filtro por assunto. Para analisar um item, **basta clicar em qualquer lugar da linha desejada na tabela** e as abas abaixo serão atualizadas automaticamente.")
+        st.markdown("Use as buscas ou filtros para encontrar trabalhos de seu interesse. Para analisá-los, **clique na linha desejada** na tabela e, em seguida, **clique no botão 'Visualizar Detalhes'** que aparecerá logo abaixo.")
     with st.container(border=True):
         st.subheader("🧠 2. Descubra Conexões com a IA")
         st.markdown("Na aba 'Trabalhos Similares', visualize um grafo de documentos semanticamente próximos e use a IA para gerar uma síntese analítica da rede de trabalhos.")
