@@ -31,7 +31,8 @@ import uuid
 # --------------------------------------------------------------------------
 CSV_DATA_PATH = "dados_finais_com_resumo_llm.csv"
 EMBEDDINGS_PATH = "openai_embeddings_concatenado_large.npy"
-SELECAO_COL = "_selecionado"  # coluna booleana para seleção
+# [REMOVIDO] A coluna de seleção customizada não é mais necessária.
+# SELECAO_COL = "_selecionado"
 
 # --------------------------------------------------------------------------
 # FUNÇÃO 1: Configuração da página do Streamlit
@@ -243,8 +244,9 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
         st.session_state.semantic_term = ""
         st.session_state.subject_filter = subject_options[0]
         st.session_state.selected_rows_cache = pd.DataFrame()
-        if 'semantic_query_input' in st.session_state: st.session_state.semantic_query_input = ""
-    
+        if 'semantic_query_input' in st.session_state:
+            st.session_state.semantic_query_input = ""
+
     search_col1, search_col2 = st.columns(2)
     with search_col1:
         st.text_input("Busca simples por palavra-chave", key="search_term", placeholder="Filtre por autor, título, resumo...")
@@ -298,64 +300,59 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     cols_display = ["Tipo de Documento", "Autor", "Título", "Ano", "Orientador", "Assuntos"]
     cols_display_existentes = [c for c in cols_display if c in df_para_exibir.columns]
     
+    # [CORREÇÃO] Ocultamos o index_original na exibição, mas ele continua nos dados
     df_aggrid = df_para_exibir[cols_display_existentes + ['index_original']].fillna('')
-
-    # [ALTERAÇÃO] - Usa o método .insert() para colocar a coluna de seleção na primeira posição.
-    df_aggrid.insert(0, SELECAO_COL, False)
-    
-    if not st.session_state.selected_rows_cache.empty:
-        prev_idx = st.session_state.selected_rows_cache.iloc[0]['index_original']
-        if prev_idx in df_aggrid['index_original'].values:
-            df_aggrid.loc[df_aggrid['index_original'] == prev_idx, SELECAO_COL] = True
 
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
-    gb.configure_column(SELECAO_COL, header_name="Analisar", editable=True, cellRenderer='agCheckboxCellRenderer', width=120)
+
+    # [CORREÇÃO 1] - Configura a seleção nativa do AgGrid
+    # Esta é a forma correta e robusta de implementar a seleção de linha única.
+    pre_selected_row_index = None
+    if not st.session_state.selected_rows_cache.empty:
+        cached_idx = st.session_state.selected_rows_cache.iloc[0]['index_original']
+        # Precisamos encontrar o índice da linha no dataframe *filtrado*
+        if cached_idx in df_aggrid['index_original'].values:
+            pre_selected_row_index = df_aggrid[df_aggrid['index_original'] == cached_idx].index[0]
+            
+    gb.configure_selection(
+        selection_mode='single',
+        use_checkbox=True,
+        header_checkbox=False, # Opcional: desativa a checkbox do cabeçalho
+        pre_selected_rows=[pre_selected_row_index] if pre_selected_row_index is not None else []
+    )
+    
     gb.configure_column("Título", width=500); gb.configure_column("Autor", width=250)
     gb.configure_column("Orientador", width=250); gb.configure_column("Assuntos", width=350)
     gb.configure_column("Tipo de Documento", width=150); gb.configure_column("Ano", width=90)
     gb.configure_column("index_original", hide=True)
-
-    simple_toggle_js = JsCode(f"""
-    function(e) {{
-      if (e.colDef.field === '{SELECAO_COL}') {{
-        e.node.setDataValue('{SELECAO_COL}', !e.value);
-      }}
-    }}
-    """)
-    gb.configure_grid_options(onCellClicked=simple_toggle_js, stopEditingWhenCellsLoseFocus=True, suppressRowClickSelection=True)
     grid_opts = gb.build()
     
     grid_response = AgGrid(
         df_aggrid,
         gridOptions=grid_opts,
         data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.MODEL_CHANGED,
+        update_mode=GridUpdateMode.SELECTION_CHANGED, # Mais específico para seleção
         fit_columns_on_grid_load=False,
         enable_enterprise_modules=False,
         allow_unsafe_jscode=True,
         key="main_interactive_grid"
     )
 
-    df_return = pd.DataFrame(grid_response.get("data", []))
-    if not df_return.empty and SELECAO_COL in df_return.columns:
-        escolhidos = df_return[df_return[SELECAO_COL] == True]
-        selecao_final = pd.DataFrame()
-        if not escolhidos.empty:
-            selecao_final = escolhidos.tail(1).copy()
-
-        idx_atual = st.session_state.selected_rows_cache['index_original'].iloc[0] if not st.session_state.selected_rows_cache.empty else None
-        idx_novo = selecao_final['index_original'].iloc[0] if not selecao_final.empty else None
-
-        if idx_atual != idx_novo:
-            st.session_state.selected_rows_cache = selecao_final
-            st.rerun()
+    # [CORREÇÃO 2] - A lógica agora lê 'selected_rows' que é o output padrão para seleções
+    selected_rows = grid_response.get("selected_rows", [])
+    if selected_rows:
+        # Pega a linha selecionada (será sempre apenas uma devido ao `selection_mode='single'`)
+        selecao_df = pd.DataFrame(selected_rows)
+        st.session_state.selected_rows_cache = selecao_df.copy()
+    else:
+        st.session_state.selected_rows_cache = pd.DataFrame()
     
     st.divider()
 
     selected_rows_df = st.session_state.selected_rows_cache
     if selected_rows_df.empty:
-        st.info("ℹ️ Para ver detalhes e trabalhos similares, marque uma linha na coluna 'Analisar' da tabela acima.")
+        st.info("ℹ️ Para ver detalhes e trabalhos similares, marque uma linha na tabela acima.")
 
     tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
 
@@ -451,12 +448,12 @@ def render_page_sobre():
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
     Ela utiliza técnicas de Processamento de Linguagem Natural (PLN) e Inteligência Artificial (IA) para facilitar a descoberta de conhecimento e a análise de tendências.
-    **Versão 1.3 - 09/25**
+    **Versão 1.4 - 09/25**
     """)
     st.divider()
     with st.container(border=True):
         st.subheader("🔎 1. Explore e Selecione na Tela de Consultas")
-        st.markdown("Use a busca simples para filtros rápidos, a busca com IA para explorar temas, ou o filtro por assunto. Para analisar um item, **basta marcar sua caixa na coluna 'Analisar'** e as abas abaixo serão atualizadas automaticamente.")
+        st.markdown("Use a busca simples para filtros rápidos, a busca com IA para explorar temas, ou o filtro por assunto. Para analisar um item, **basta marcar sua caixa de seleção na primeira coluna** e as abas abaixo serão atualizadas automaticamente.")
     with st.container(border=True):
         st.subheader("🧠 2. Descubra Conexões com a IA")
         st.markdown("Na aba 'Trabalhos Similares', visualize um grafo de documentos semanticamente próximos e use a IA para gerar uma síntese analítica da rede de trabalhos.")
