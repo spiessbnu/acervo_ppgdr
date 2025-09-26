@@ -43,7 +43,7 @@ def setup_page():
     )
 
 # --------------------------------------------------------------------------
-# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO
+# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO (sem alterações)
 # --------------------------------------------------------------------------
 def safe_literal_eval(s):
     try:
@@ -59,10 +59,8 @@ def load_data(path: str) -> pd.DataFrame:
             df['Assuntos_Processados'] = df['Assuntos_Lista'].apply(safe_literal_eval)
         else:
             df['Assuntos_Processados'] = [[] for _ in range(len(df))]
-        
         if 'index_original' not in df.columns:
             df['index_original'] = df.index
-            
         return df
     except FileNotFoundError:
         st.error(f"Arquivo de dados não encontrado: '{path}'.")
@@ -83,8 +81,7 @@ def load_embeddings(path: str) -> np.ndarray:
         return None
 
 def validate_data(df: pd.DataFrame, embeddings: np.ndarray) -> bool:
-    if df is None or embeddings is None:
-        return False
+    if df is None or embeddings is None: return False
     required_cols = ['Título', 'Autor', 'Resumo_LLM', 'Ano', 'Tipo de Documento']
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
@@ -108,8 +105,7 @@ def remover_acentos(texto: str) -> str:
 
 @st.cache_data
 def prepare_subject_list(_df: pd.DataFrame) -> list:
-    if 'Assuntos_Processados' not in _df.columns:
-        return ['-- Selecione um Assunto --']
+    if 'Assuntos_Processados' not in _df.columns: return ['-- Selecione um Assunto --']
     todos_assuntos = [assunto for sublista in _df['Assuntos_Processados'] for assunto in sublista]
     lista_unica = sorted(list(set(todos_assuntos)), key=lambda texto: remover_acentos(texto.lower()))
     return ['-- Selecione um Assunto --'] + lista_unica
@@ -124,17 +120,13 @@ def compute_clusters(_embeddings, k):
     df_plot['cluster'] = cluster_labels
     return df_plot
 
-# --------------------------------------------------------------------------
-# FUNÇÃO DE IA PARA GERAR SÍNTESE
-# --------------------------------------------------------------------------
 def get_ai_synthesis(summaries: str) -> str:
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         prompt_template = """
         Você é um especialista em análise de conteúdo e síntese acadêmica.
-        Sua missão é analisar o conjunto de resumos de trabalhos acadêmicos fornecido abaixo.
-        Leia todos os textos e identifique conexões, padrões e temas centrais.
-        CONTEXTO:
+        Sua missão é analisar o conjunto de resumos de trabalhos acadêmicos fornecido abaixo e identificar conexões, padrões e temas centrais.
+        CONTEXTO DOS RESUMOS:
         ---
         {summaries}
         ---
@@ -149,41 +141,30 @@ def get_ai_synthesis(summaries: str) -> str:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Você é um especialista em análise de conteúdo e síntese acadêmica. Responda em português do Brasil."},
+                {"role": "system", "content": "Você é um especialista em análise de conteúdo. Responda em português do Brasil."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.6,
         )
         return response.choices[0].message.content
     except Exception as e:
-        st.error(f"Ocorreu um erro ao chamar a API da OpenAI: {e}")
-        return "Falha ao gerar a análise. Verifique a configuração da chave de API ou se o serviço está disponível."
+        st.error(f"Erro na API da OpenAI: {e}"); return "Falha ao gerar a análise."
 
-# --------------------------------------------------------------------------
-# GRAFO DE SIMILARIDADE
-# --------------------------------------------------------------------------
 def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num_vizinhos):
-    nos_da_rede = {id_documento_inicial}
-    vizinhos_l1 = np.argsort(matriz_similaridade[id_documento_inicial])[-num_vizinhos-1:-1][::-1]
+    nos_da_rede = {id_documento_inicial}; vizinhos_l1 = np.argsort(matriz_similaridade[id_documento_inicial])[-num_vizinhos-1:-1][::-1]
     nos_da_rede.update(vizinhos_l1)
-
     G = nx.Graph()
     for node_id in nos_da_rede:
-        node_info = df.iloc[node_id]
-        level = 0 if node_id == id_documento_inicial else 1
+        node_info = df.iloc[node_id]; level = 0 if node_id == id_documento_inicial else 1
         G.add_node(node_id, title=node_info['Título'], author=node_info['Autor'], level=level)
-
     for vizinho_id in vizinhos_l1:
         similaridade = matriz_similaridade[id_documento_inicial, vizinho_id]
         G.add_edge(id_documento_inicial, vizinho_id, weight=similaridade)
-
     pos = nx.spring_layout(G, k=0.8, iterations=50, seed=42)
-
     edge_trace = go.Scatter(x=[], y=[], line=dict(width=1, color='#888'), hoverinfo='none', mode='lines')
     for edge in G.edges():
         x0, y0 = pos[edge[0]]; x1, y1 = pos[edge[1]]
         edge_trace['x'] += (x0, x1, None); edge_trace['y'] += (y0, y1, None)
-
     node_trace = go.Scatter(x=[], y=[], mode='markers+text', text=[], hovertext=[], hovertemplate="%{hovertext}", marker=dict(color=[], size=[], line_width=2))
     cores_niveis = {0: 'crimson', 1: 'royalblue'}
     for node in G.nodes():
@@ -200,28 +181,97 @@ def generate_similarity_graph(df, matriz_similaridade, id_documento_inicial, num
         node_trace['hovertext'] += (hover_text,)
         label_texto = info['title'][:30] + '...' if len(info['title']) > 30 else info['title']
         node_trace['text'] += (label_texto,)
-
     node_trace.textposition = 'top center'; node_trace.textfont = dict(size=9, color='#333')
     fig = go.Figure(data=[edge_trace, node_trace], layout=go.Layout(title='', showlegend=False, hovermode='closest', margin=dict(b=20, l=5, r=5, t=40), xaxis=dict(showgrid=False, zeroline=False, showticklabels=False), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)))
     return fig, nos_da_rede
 
-# --------------------------------------------------------------------------
-# PÁGINAS
-# --------------------------------------------------------------------------
-def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
-    st.title("Consulta ao Acervo de Dissertações e Teses")
+@st.cache_data(show_spinner=False)
+def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="text-embedding-3-large") -> list:
+    if not query_text.strip(): return []
+    try:
+        client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
+        query_embedding = client.embeddings.create(input=[query_text], model=model).data[0].embedding
+        similarities = cosine_similarity([query_embedding], _document_embeddings).flatten()
+        return [i for i in np.argsort(-similarities) if similarities[i] > 0.2][:20]
+    except Exception as e:
+        st.error(f"Erro na busca inteligente: {e}"); return []
 
-    if 'selected_rows_cache' not in st.session_state: st.session_state.selected_rows_cache = pd.DataFrame()
-    if 'search_term' not in st.session_state: st.session_state.search_term = ""
-    if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
-    if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
-    if 'analysis_cache' not in st.session_state: st.session_state.analysis_cache = {}
+# --------------------------------------------------------------------------
+# PÁGINAS (Refatoradas para o novo fluxo)
+# --------------------------------------------------------------------------
+
+def render_details_view(df: pd.DataFrame, matriz_similaridade: np.ndarray):
+    """
+    Renderiza a página de detalhes para o item selecionado.
+    """
+    def go_back_to_grid():
+        st.session_state.view_mode = 'grid'
+
+    st.button("⬅️ Voltar para a Tabela", on_click=go_back_to_grid)
+    
+    selected_rows_df = st.session_state.get('selected_item_cache', pd.DataFrame())
+
+    if not selected_rows_df.empty:
+        idx_original = selected_rows_df.iloc[0]['index_original']
+        detalhes = df.loc[idx_original]
+
+        # Seção de Detalhes
+        st.title(detalhes.get('Título', ''))
+        st.caption(f"**Autor(a):** {detalhes.get('Autor', '')} | **Ano:** {detalhes.get('Ano', '')}")
+        st.divider()
+        st.subheader("Resumo")
+        st.write(detalhes.get('Resumo_LLM', ''))
+        st.subheader("Assuntos"); st.write(', '.join(detalhes.get('Assuntos_Processados', [])))
+        
+        link_pdf = detalhes.get('Link_PDF')
+        if link_pdf and isinstance(link_pdf, str) and 'http' in link_pdf:
+            st.link_button("Baixar PDF do Documento", url=link_pdf, use_container_width=True)
+        else:
+            st.warning("Nenhum link para download disponível.")
+        
+        st.divider()
+
+        # Seção de Trabalhos Similares
+        st.subheader("Trabalhos Similares")
+        if not matriz_similaridade.any():
+            st.warning("Dados de similaridade não disponíveis.")
+        else:
+            id_selecionado = idx_original
+            num_vizinhos = st.slider("Número de trabalhos similares para exibir", 1, 10, 5, 1, key=f"slider_vizinhos_{id_selecionado}")
+            fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
+            st.plotly_chart(fig, use_container_width=True)
+            df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
+            st.dataframe(df_similares, use_container_width=True, hide_index=True)
+            st.divider()
+            
+            if st.button("Gerar análise da rede de trabalhos com IA 🧠", key=f"btn_analise_{id_selecionado}"):
+                cache_key = (id_selecionado, num_vizinhos)
+                if cache_key in st.session_state.analysis_cache:
+                    analysis = st.session_state.analysis_cache[cache_key]; st.toast("Reexibindo análise em cache. ⚡")
+                else:
+                    summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
+                    if not summaries_to_analyze.empty:
+                        with st.spinner('A IA está lendo e preparando a análise...'):
+                            analysis = get_ai_synthesis("\n\n---\n\n".join(summaries_to_analyze))
+                            st.session_state.analysis_cache[cache_key] = analysis
+                    else:
+                        analysis = "Não há resumos disponíveis para gerar análise."; st.warning(analysis)
+                with st.container(border=True):
+                    st.subheader("Análise Gerada por IA"); st.markdown(analysis)
+    else:
+        st.error("Nenhum item selecionado. Por favor, volte à tabela e selecione um item.")
+
+def render_grid_view(df: pd.DataFrame, subject_options: list):
+    """
+    Renderiza a página principal com filtros e a tabela interativa.
+    """
+    st.title("Consulta ao Acervo de Dissertações e Teses")
 
     def clear_all_filters():
         st.session_state.search_term = ""
         st.session_state.semantic_term = ""
         st.session_state.subject_filter = subject_options[0]
-        st.session_state.selected_rows_cache = pd.DataFrame()
+        st.session_state.selected_item_cache = pd.DataFrame()
         if 'semantic_query_input' in st.session_state:
             st.session_state.semantic_query_input = ""
 
@@ -233,7 +283,7 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
             semantic_input = st.text_input("Busca semântica (com IA)", placeholder="Qual o tema do seu interesse?", key="semantic_query_input")
             semantic_submitted = st.form_submit_button("Buscar com IA 🧠")
             if semantic_submitted and semantic_input:
-                st.session_state.selected_rows_cache = pd.DataFrame()
+                st.session_state.selected_item_cache = pd.DataFrame()
                 st.session_state.semantic_term = semantic_input
                 st.session_state.search_term = ""
                 st.session_state.subject_filter = subject_options[0]
@@ -243,13 +293,12 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
     with filter_col1:
         st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter")
     with filter_col2:
-        st.button("Limpar Filtros e Seleção 🧹", on_click=clear_all_filters, use_container_width=True, type="primary")
+        st.button("Limpar Filtros 🧹", on_click=clear_all_filters, use_container_width=True, type="primary")
 
     df_filtered = df.copy()
-    # Lógica de filtragem... (sem alterações)
     if st.session_state.semantic_term:
         with st.spinner("Buscando por significado..."):
-            ranked_indices = search_semantic(st.session_state.semantic_term, embeddings)
+            ranked_indices = search_semantic(st.session_state.semantic_term, df.embeddings.to_list())
         if ranked_indices:
             df_filtered = df.loc[ranked_indices]
         else:
@@ -283,93 +332,46 @@ def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_simil
 
     gb = GridOptionsBuilder.from_dataframe(df_aggrid)
     gb.configure_default_column(resizable=True, wrapText=True, autoHeight=True, suppressMenu=True, sortable=True)
-    
-    # [ALTERAÇÃO 1] - Configuração da seleção nativa por clique na linha
     gb.configure_selection(selection_mode='single', use_checkbox=False)
-    
-    gb.configure_column("Título", width=500); gb.configure_column("Autor", width=250)
+    gb.configure_column("Título", width=600); gb.configure_column("Autor", width=250)
     gb.configure_column("Orientador", width=250); gb.configure_column("Assuntos", width=350)
     gb.configure_column("Tipo de Documento", width=150); gb.configure_column("Ano", width=90)
     gb.configure_column("index_original", hide=True)
     grid_opts = gb.build()
     
     grid_response = AgGrid(
-        df_aggrid,
-        gridOptions=grid_opts,
-        data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.MODEL_CHANGED,
-        fit_columns_on_grid_load=False,
-        enable_enterprise_modules=False,
-        key="main_interactive_grid",
-        theme='streamlit'
+        df_aggrid, gridOptions=grid_opts, update_mode=GridUpdateMode.SELECTION_CHANGED,
+        data_return_mode=DataReturnMode.AS_INPUT, fit_columns_on_grid_load=False,
+        enable_enterprise_modules=False, key="main_interactive_grid", theme='streamlit'
     )
+    
+    selected_rows = grid_response.get("selected_rows", [])
+    
+    if selected_rows:
+        if st.button("Visualizar Detalhes do Item Selecionado", key="view_details_button", use_container_width=True, type="primary"):
+            st.session_state.selected_item_cache = pd.DataFrame(selected_rows).copy()
+            st.session_state.view_mode = 'details'
+            st.rerun()
+    else:
+        st.info("Clique em uma linha na tabela para habilitar a visualização de detalhes.")
 
-    # [ALTERAÇÃO 2] - Adiciona um botão explícito para acionar a análise
-    if st.button("Visualizar Detalhes do Item Selecionado", key="view_details_button", use_container_width=True):
-        selected_rows = grid_response.get("selected_rows") or []
-        
-        if len(selected_rows) == 1:
-            st.session_state.selected_rows_cache = pd.DataFrame(selected_rows).copy()
-        else:
-            st.session_state.selected_rows_cache = pd.DataFrame()
-            st.warning("Por favor, selecione uma única linha na tabela para visualizar os detalhes.")
-        
-        # Força um rerun para garantir que as abas abaixo sejam atualizadas
-        st.rerun()
+def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
+    """
+    Função principal da página de consultas, que age como um roteador
+    entre a visualização da grade e a visualização de detalhes.
+    """
+    if 'view_mode' not in st.session_state:
+        st.session_state.view_mode = 'grid'
+    
+    if st.session_state.view_mode == 'grid':
+        # Anexa os embeddings ao dataframe para busca semântica mais fácil
+        df_with_embeds = df.copy()
+        df_with_embeds['embeddings'] = list(embeddings)
+        render_grid_view(df_with_embeds, subject_options)
+    elif st.session_state.view_mode == 'details':
+        render_details_view(df, matriz_similaridade)
 
-    st.divider()
-
-    selected_rows_df = st.session_state.selected_rows_cache
-    if selected_rows_df.empty:
-        st.info("ℹ️ Para ver detalhes e trabalhos similares, clique em uma linha da tabela e depois no botão 'Visualizar Detalhes'.")
-
-    tab_detalhes, tab_similares = st.tabs(["Detalhes", "Trabalhos Similares"])
-
-    with tab_detalhes:
-        if not selected_rows_df.empty:
-            idx_original = selected_rows_df.iloc[0]['index_original']
-            detalhes = df.loc[idx_original]
-            st.subheader(detalhes.get('Título', ''))
-            st.divider()
-            st.markdown("#### Assuntos"); st.write(', '.join(detalhes.get('Assuntos_Processados', [])))
-            st.markdown("#### Resumo"); st.write(detalhes.get('Resumo_LLM', ''))
-            st.markdown("#### Link para Download")
-            link_pdf = detalhes.get('Link_PDF')
-            if link_pdf and isinstance(link_pdf, str) and 'http' in link_pdf:
-                st.link_button("Baixar PDF", url=link_pdf, use_container_width=True)
-            else:
-                st.warning("Nenhum link para download disponível.")
-        else:
-            st.info("Nenhum item selecionado.")
-
-    with tab_similares:
-        if not matriz_similaridade.any():
-            st.warning("Dados de similaridade não disponíveis.")
-        elif not selected_rows_df.empty:
-            id_selecionado = selected_rows_df.iloc[0]['index_original']
-            num_vizinhos = st.slider("Número de vizinhos", 1, 10, 5, 1, key=f"slider_vizinhos_{id_selecionado}")
-            fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
-            st.plotly_chart(fig, use_container_width=True)
-            df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
-            st.dataframe(df_similares, use_container_width=True, hide_index=True)
-            st.divider()
-            if st.button("Gerar análise da rede de trabalhos com IA 🧠", key=f"btn_analise_{id_selecionado}"):
-                cache_key = (id_selecionado, num_vizinhos)
-                if cache_key in st.session_state.analysis_cache:
-                    analysis = st.session_state.analysis_cache[cache_key]; st.toast("Reexibindo análise em cache. ⚡")
-                else:
-                    summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
-                    if not summaries_to_analyze.empty:
-                        with st.spinner('A IA está lendo e preparando a análise...'):
-                            analysis = get_ai_synthesis("\n\n---\n\n".join(summaries_to_analyze))
-                            st.session_state.analysis_cache[cache_key] = analysis
-                    else:
-                        analysis = "Não há resumos disponíveis para gerar análise."; st.warning(analysis)
-                with st.container(border=True):
-                    st.subheader("Análise Gerada por IA"); st.markdown(analysis)
-        else:
-            st.info("Nenhum item selecionado para mostrar similares.")
-
+# ... as outras funções (dashboard, sobre) permanecem as mesmas ...
 def render_page_dashboard(df: pd.DataFrame, embeddings: np.ndarray):
     st.title("Dashboard de Análise do Acervo")
     st.markdown("---")
@@ -417,15 +419,15 @@ def render_page_sobre():
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
     Ela utiliza técnicas de Processamento de Linguagem Natural (PLN) e Inteligência Artificial (IA) para facilitar a descoberta de conhecimento e a análise de tendências.
-    **Versão 1.6 - 09/25**
+    **Versão 1.7 - 09/25**
     """)
     st.divider()
     with st.container(border=True):
         st.subheader("🔎 1. Explore e Selecione na Tela de Consultas")
-        st.markdown("Use as buscas ou filtros para encontrar trabalhos de seu interesse. Para analisá-los, **clique na linha desejada** na tabela e, em seguida, **clique no botão 'Visualizar Detalhes do Item Selecionado'** que aparecerá logo abaixo.")
+        st.markdown("Use as buscas ou filtros. Para analisar um item, **clique na linha desejada** na tabela e, em seguida, **clique no botão 'Visualizar Detalhes do Item Selecionado'** que aparecerá abaixo da tabela.")
     with st.container(border=True):
-        st.subheader("🧠 2. Descubra Conexões com a IA")
-        st.markdown("Na aba 'Trabalhos Similares', visualize um grafo de documentos semanticamente próximos e use a IA para gerar uma síntese analítica da rede de trabalhos.")
+        st.subheader("⬅️ 2. Navegue de Volta")
+        st.markdown("Na tela de detalhes, use o botão **'Voltar para a Tabela'** para retornar à sua busca.")
     with st.container(border=True):
         st.subheader("📊 3. Visualize o Panorama no Dashboard")
         st.markdown("Explore gráficos interativos sobre a produção anual, os assuntos mais frequentes e uma visualização 3D dos clusters temáticos de todo o acervo.")
@@ -450,7 +452,7 @@ def main():
 
     with st.sidebar:
         st.markdown("<h1 style='color:white;'><b>📚 Acervo PPGDR</b></h1>", unsafe_allow_html=True)
-        if st.button("Consultas", use_container_width=True): st.session_state.page = "Consultas"
+        if st.button("Consultas", use_container_width=True): st.session_state.page = "Consultas"; st.session_state.view_mode = 'grid'
         if st.button("Dashboard", use_container_width=True): st.session_state.page = "Dashboard"
         if st.button("Sobre", use_container_width=True): st.session_state.page = "Sobre"
         st.divider()
@@ -473,6 +475,7 @@ def main():
     subject_options = prepare_subject_list(df)
 
     if st.session_state.page == "Consultas":
+        # Passando todos os argumentos necessários para a função roteadora
         render_page_consultas(df, embeddings, matriz_similaridade, subject_options)
     elif st.session_state.page == "Dashboard":
         render_page_dashboard(df, embeddings)
