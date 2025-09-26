@@ -36,7 +36,7 @@ EMBEDDINGS_PATH = "openai_embeddings_concatenado_large.npy"
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Acervo de Dissertações e Teses PPGDR v2.0 - TESTE",
+        page_title="Acervo de Dissertações e Teses PPGDR v2.1",
         page_icon="📚",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -333,23 +333,26 @@ def render_grid_view(df: pd.DataFrame, subject_options: list):
         enable_enterprise_modules=False, key="main_interactive_grid", theme='streamlit'
     )
     
-    # --- [INÍCIO DO CÓDIGO DE TESTE] ---
-    if st.button("Testar Popup", use_container_width=True, type="primary"):
-        st.success("Hello, World! O botão foi clicado e a mensagem apareceu com sucesso.")
-        # A lógica original foi comentada para isolar o teste do botão.
-        # selected_rows = grid_response.get("selected_rows") or []
-        # if len(selected_rows) == 1:
-        #     st.session_state.selected_item_cache = pd.DataFrame(selected_rows).copy()
-        #     st.session_state.view_mode = 'details'
-        #     st.rerun()
-        # else:
-        #     st.warning("Por favor, selecione uma única linha na tabela antes de clicar em 'Visualizar'.")
-    # --- [FIM DO CÓDIGO DE TESTE] ---
-
+    # [LÓGICA CORRIGIDA 1] - Captura a seleção da tabela e salva em um estado temporário
+    # Isso acontece em CADA rerun, garantindo que o estado esteja sempre atualizado.
+    if grid_response.get("selected_rows") is not None:
+        st.session_state.active_grid_selection = pd.DataFrame(grid_response["selected_rows"])
+    
+    # [LÓGICA CORRIGIDA 2] - O botão é permanente e age sobre o estado salvo, não o 'grid_response' ao vivo.
+    if st.button("Visualizar Detalhes do Item Selecionado", use_container_width=True, type="primary"):
+        active_selection = st.session_state.get('active_grid_selection', pd.DataFrame())
+        if not active_selection.empty and len(active_selection) == 1:
+            st.session_state.selected_item_cache = active_selection.copy()
+            st.session_state.view_mode = 'details'
+            st.rerun()
+        else:
+            st.warning("Por favor, selecione uma única linha na tabela antes de clicar em 'Visualizar'.")
 
 def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
+    # Inicialização centralizada de todas as chaves do session_state
     if 'view_mode' not in st.session_state: st.session_state.view_mode = 'grid'
     if 'selected_item_cache' not in st.session_state: st.session_state.selected_item_cache = pd.DataFrame()
+    if 'active_grid_selection' not in st.session_state: st.session_state.active_grid_selection = pd.DataFrame()
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
     if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
@@ -409,7 +412,7 @@ def render_page_sobre():
     st.markdown("""
     Esta aplicação foi desenvolvida como uma interface inteligente para explorar o acervo de dissertações e teses do PPGDR. 
     Ela utiliza técnicas de Processamento de Linguagem Natural (PLN) e Inteligência Artificial (IA) para facilitar a descoberta de conhecimento e a análise de tendências.
-    **Versão 1.8 - 09/25**
+    **Versão 2.0 (Estável) - 09/25**
     """)
     st.divider()
     with st.container(border=True):
