@@ -36,7 +36,7 @@ EMBEDDINGS_PATH = "openai_embeddings_concatenado_large.npy"
 # --------------------------------------------------------------------------
 def setup_page():
     st.set_page_config(
-        page_title="Acervo de Dissertações e Teses PPGDR v1.9",
+        page_title="Acervo de Dissertações e Teses PPGDR v2.0",
         page_icon="📚",
         layout="wide",
         initial_sidebar_state="expanded"
@@ -198,7 +198,7 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
         st.error(f"Erro na busca inteligente: {e}"); return []
 
 # --------------------------------------------------------------------------
-# SUB-PÁGINAS DA CONSULTA
+# PÁGINAS (Refatoradas para o novo fluxo)
 # --------------------------------------------------------------------------
 
 def render_details_view(df: pd.DataFrame, matriz_similaridade: np.ndarray):
@@ -333,19 +333,25 @@ def render_grid_view(df: pd.DataFrame, subject_options: list):
         enable_enterprise_modules=False, key="main_interactive_grid", theme='streamlit'
     )
     
+    # [ALTERAÇÃO CRÍTICA 1] - A seleção é salva no estado em CADA execução.
+    # Isso garante que a informação esteja disponível para o botão no próximo rerun.
+    st.session_state.active_grid_selection = pd.DataFrame(grid_response.get("selected_rows", []))
+    
+    # [ALTERAÇÃO CRÍTICA 2] - O botão agora é a única fonte de verdade para a MUDANÇA DE TELA.
     if st.button("Visualizar Detalhes do Item Selecionado", use_container_width=True, type="primary"):
-        selected_rows = grid_response.get("selected_rows") or []
-        if len(selected_rows) == 1:
-            st.session_state.selected_item_cache = pd.DataFrame(selected_rows).copy()
+        # Ele lê a seleção que foi salva no passo anterior.
+        if not st.session_state.active_grid_selection.empty:
+            st.session_state.selected_item_cache = st.session_state.active_grid_selection.copy()
             st.session_state.view_mode = 'details'
             st.rerun()
         else:
-            st.warning("Por favor, selecione uma única linha na tabela antes de clicar em 'Visualizar'.")
+            st.warning("Por favor, selecione uma linha na tabela antes de clicar em 'Visualizar'.")
 
 def render_page_consultas(df: pd.DataFrame, embeddings: np.ndarray, matriz_similaridade: np.ndarray, subject_options: list):
-    # [CORREÇÃO] - Inicialização centralizada de todas as chaves do session_state
+    # Inicialização centralizada de todas as chaves do session_state
     if 'view_mode' not in st.session_state: st.session_state.view_mode = 'grid'
     if 'selected_item_cache' not in st.session_state: st.session_state.selected_item_cache = pd.DataFrame()
+    if 'active_grid_selection' not in st.session_state: st.session_state.active_grid_selection = pd.DataFrame()
     if 'search_term' not in st.session_state: st.session_state.search_term = ""
     if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
     if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
