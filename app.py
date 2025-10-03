@@ -307,15 +307,20 @@ def main():
     # --- CSS ATUALIZADO ---
     # Este CSS agora usa um seletor '*' para forçar a cor branca em TODO o texto da sidebar
     st.markdown("""
-        <style>
-            [data-testid="stSidebar"] {
-                background-color: #0F5EDD;
-            }
-            [data-testid="stSidebar"] * {
-                color: white;
-            }
-        </style>
-    """, unsafe_allow_html=True)
+    <style>
+        [data-testid="stSidebar"] {
+            background-color: #0F5EDD;
+        }
+        /* Estiliza o título na sidebar */
+        [data-testid="stSidebar"] h1 {
+            color: white;
+        }
+        /* Garante que o texto DENTRO dos botões tenha cor escura para ser legível */
+        [data-testid="stSidebar"] .stButton button {
+            color: #0F1116; 
+        }
+    </style>
+""", unsafe_allow_html=True)
 
     df = load_data(CSV_DATA_PATH)
     embeddings = load_embeddings(EMBEDDINGS_PATH)
