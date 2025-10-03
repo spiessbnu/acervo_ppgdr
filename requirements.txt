@@ -1,11 +1,9 @@
-# requirements.txt
-
-streamlit>=1.32.0
-pandas>=2.0.0
-numpy
-unicodedata2
-networkx
-plotly
-scikit-learn
-openai
-streamlit-aggrid
+streamlit==1.46.1
+pandas==2.3.0
+numpy==2.3.1
+unicodedata2==16.0.0
+networkx==3.5
+plotly==6.2.0
+scikit-learn==1.7.0
+openai==1.93.0
+streamlit-aggrid==1.1.6
