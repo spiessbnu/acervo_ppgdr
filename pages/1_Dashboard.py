@@ -12,6 +12,20 @@ from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 import ast
 
+st.markdown("""
+    <style>
+        [data-testid="stSidebar"] {
+            background-color: #0F5EDD;
+            color: white;
+        }
+        /* Garante que os links de navegação fiquem brancos */
+        [data-testid="stSidebar"] a {
+            color: white;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+
 # --------------------------------------------------------------------------
 # CONFIGURAÇÃO DE ARQUIVOS E CONSTANTES
 # --------------------------------------------------------------------------
