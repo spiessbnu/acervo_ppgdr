@@ -32,4 +32,4 @@ st.markdown("""
 
 # Adiciona a imagem no rodapé da barra lateral (veja o item c)
 with st.sidebar:
-    st.image("NET-01.png", use_column_width=True)
+    st.image("NET-01.png", use_container_width=True)
