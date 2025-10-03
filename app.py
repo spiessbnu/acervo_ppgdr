@@ -304,13 +304,14 @@ def render_page_sobre():
 def main():
     st.set_page_config(page_title="Acervo PPGDR", page_icon="📚", layout="wide")
 
+    # --- CSS ATUALIZADO ---
+    # Este CSS agora usa um seletor '*' para forçar a cor branca em TODO o texto da sidebar
     st.markdown("""
         <style>
             [data-testid="stSidebar"] {
                 background-color: #0F5EDD;
-                color: white;
             }
-            [data-testid="stSidebar"] a {
+            [data-testid="stSidebar"] * {
                 color: white;
             }
         </style>
@@ -328,27 +329,39 @@ def main():
     matriz_similaridade = calculate_similarity_matrix(embeddings)
     subject_options = prepare_subject_list(df)
 
+    # --- NAVEGAÇÃO COM BOTÕES E SESSION STATE ---
+    # Inicializa o estado da página, definindo 'Consultas' como padrão
+    if 'page' not in st.session_state:
+        st.session_state.page = "Consultas"
+
     with st.sidebar:
         st.title("📚 Acervo PPGDR")
         
-        page = st.radio(
-            "Navegação",
-            ["Consultas", "Dashboard", "Sobre"],
-            label_visibility="collapsed" # Esconde o rótulo "Navegação"
-        )
+        # Cada botão atualiza o st.session_state.page
+        if st.button("Consultas", use_container_width=True):
+            st.session_state.page = "Consultas"
+        
+        if st.button("Dashboard", use_container_width=True):
+            st.session_state.page = "Dashboard"
+
+        if st.button("Sobre", use_container_width=True):
+            st.session_state.page = "Sobre"
         
         st.divider()
         st.image("NET-01.png", use_container_width=True)
 
-    if page == "Consultas":
-        # Inicializa o estado da sessão para a página de consultas, se necessário
+    # --- ROTEAMENTO BASEADO NO SESSION STATE ---
+    # Renderiza a página de acordo com o valor em st.session_state.page
+    if st.session_state.page == "Consultas":
         if 'search_term' not in st.session_state: st.session_state.search_term = ""
         if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
         if 'subject_filter' not in st.session_state: st.session_state.subject_filter = subject_options[0]
         render_page_consultas(df, embeddings, matriz_similaridade, subject_options)
-    elif page == "Dashboard":
+    
+    elif st.session_state.page == "Dashboard":
         render_page_dashboard(df, embeddings)
-    elif page == "Sobre":
+
+    elif st.session_state.page == "Sobre":
         render_page_sobre()
 
 # --------------------------------------------------------------------------
