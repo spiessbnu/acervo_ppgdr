@@ -8,11 +8,15 @@ st.set_page_config(
     layout="wide"
 )
 
-# Injeta CSS para customizar a barra lateral (mantemos aqui para carregar primeiro)
 st.markdown("""
     <style>
         [data-testid="stSidebar"] {
             background-color: #0F5EDD;
+            color: white; /* Adicione esta linha */
+        }
+        /* Para garantir que os links também fiquem brancos */
+        [data-testid="stSidebar"] a {
+            color: white;
         }
     </style>
 """, unsafe_allow_html=True)
