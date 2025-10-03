@@ -2,6 +2,19 @@
 
 import streamlit as st
 
+st.markdown("""
+    <style>
+        [data-testid="stSidebar"] {
+            background-color: #0F5EDD;
+            color: white;
+        }
+        /* Garante que os links de navegação fiquem brancos */
+        [data-testid="stSidebar"] a {
+            color: white;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 def render_page_sobre():
     st.set_page_config(layout="wide", page_title="Sobre o Projeto")
     st.title("ℹ️ Sobre o Projeto")
