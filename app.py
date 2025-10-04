@@ -101,7 +101,7 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         query_embedding = client.embeddings.create(input=[query_text], model=model).data[0].embedding
         similarities = cosine_similarity([query_embedding], _document_embeddings).flatten()
-        return [i for i in np.argsort(-similarities) if similarities[i] > 0.2][:10]
+        return [i for i in np.argsort(-similarities) if similarities[i] > 0.8][:20]
     except Exception as e:
         st.error(f"Erro na busca inteligente: {e}"); return []
 
@@ -109,54 +109,55 @@ def get_ai_synthesis(summaries: str) -> str:
     """Chama a API da OpenAI para gerar uma síntese analítica."""
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
+        
+        # --- NOVO PROMPT INTEGRADO AQUI ---
         prompt_template = """
-Você é um(a) analista especializado(a) em revisão de literatura e síntese de evidências.
-Receberá um conjunto de resumos (abstracts) e deve produzir uma análise que preserve
-as especificidades de cada estudo e, ao mesmo tempo, construa uma visão unificada do campo.
+        Você é um(a) analista especializado(a) em revisão de literatura e síntese de evidências.
+        Receberá um conjunto de resumos (abstracts) e deve produzir uma análise que preserve
+        as especificidades de cada estudo e, ao mesmo tempo, construa uma visão unificada do campo.
 
-INSTRUÇÕES (qualidade e segurança)
-- Escreva em português do Brasil, com tom técnico, claro e imparcial.
-- Não invente dados; se algo não constar no resumo, escreva “não informado”.
-- Evite jargão excessivo; explique termos técnicos apenas quando estritamente necessário.
-- Aponte sobreposições entre estudos e evite redundâncias.
-- Não exponha raciocínio passo a passo; entregue apenas as seções pedidas.
+        INSTRUÇÕES (qualidade e segurança)
+        - Escreva em português do Brasil, com tom técnico, claro e imparcial.
+        - Não invente dados; se algo não constar no resumo, escreva “não informado”.
+        - Evite jargão excessivo; explique termos técnicos apenas quando estritamente necessário.
+        - Aponte sobreposições entre estudos e evite redundâncias.
+        - Não exponha raciocínio passo a passo; entregue apenas as seções pedidas.
 
-ESCOPO ANALÍTICO MÍNIMO
-- Nível micro: para cada estudo, considere (quando disponível) questão de pesquisa,
-  enquadramento teórico/conceitual, método/dados e achados/limitações.
-- Nível macro: identifique padrões, convergências/divergências e lacunas plausíveis,
-  integrando os achados em uma narrativa coesa.
+        ESCOPO ANALÍTICO MÍNIMO
+        - Nível micro: para cada estudo, considere (quando disponível) questão de pesquisa,
+          enquadramento teórico/conceitual, método/dados e achados/limitações.
+        - Nível macro: identifique padrões, convergências/divergências e lacunas plausíveis,
+          integrando os achados em uma narrativa coesa.
 
-FORMATO DE SAÍDA (estritamente nesta ordem; não use tabelas)
+        FORMATO DE SAÍDA (estritamente nesta ordem; não use tabelas)
 
-Síntese analítica
-(2–3 parágrafos densos integrando o conjunto: panorama, fios condutores conceituais,
-escopo empírico, principais resultados e tensões metodológicas/teóricas. Não liste; sintetize.
-Ao citar achados específicos, identifique-os pelo conteúdo — tema, método, amostra — sem transcrever longos trechos.)
+        Síntese analítica
+        (2–3 parágrafos densos integrando o conjunto: panorama, fios condutores conceituais,
+        escopo empírico, principais resultados e tensões metodológicas/teóricas. Não liste; sintetize.
+        Ao citar achados específicos, identifique-os pelo conteúdo — tema, método, amostra — sem transcrever longos trechos.)
 
-Temas principais
-(- Liste 3–6 temas.
- - Para cada tema: título do tema e 1–2 frases explicando por que é central no corpus.
- - Em seguida, descreva a evidência típica/achados recorrentes em 1 frase, evitando redundâncias.)
+        Temas principais
+        (- Liste 3–6 temas.
+         - Para cada tema: título do tema e 1–2 frases explicando por que é central no corpus.
+         - Em seguida, descreva a evidência típica/achados recorrentes em 1 frase, evitando redundâncias.)
 
-Convergências e Divergências
-(- Convergências: 2–5 enunciados curtos (uma frase cada) que expressem acordos recorrentes entre os estudos.
- - Divergências/tensões: 2–5 enunciados curtos (uma frase cada) que indiquem contrastes teóricos, metodológicos ou empíricos.
- - Quando apropriado, sinalize “não informado” ou “incerto” para evitar extrapolações.)
+        Convergências e Divergências
+        (- Convergências: 2–5 enunciados curtos (uma frase cada) que expressem acordos recorrentes entre os estudos.
+         - Divergências/tensões: 2–5 enunciados curtos (uma frase cada) que indiquem contrastes teóricos, metodológicos ou empíricos.
+         - Quando apropriado, sinalize “não informado” ou “incerto” para evitar extrapolações.)
 
-ENTRADA
-CONJUNTO DE RESUMOS:
----
-{summaries}
----
+        ENTRADA
+        CONJUNTO DE RESUMOS:
+        ---
+        {summaries}
+        ---
 
-RESTRIÇÕES FINAIS
-- Parafraseie; não copie longos trechos dos resumos.
-- Não inclua nada além das três seções especificadas.
-"""
-
+        RESTRIÇÕES FINAIS
+        - Parafraseie; não copie longos trechos dos resumos.
+        - Não inclua nada além das três seções especificadas.
+        """
         prompt = prompt_template.format(summaries=summaries)
-        response = client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "system", "content": "Você é um especialista em análise de conteúdo. Responda em português do Brasil."}, {"role": "user", "content": prompt}], temperature=0.6)
+        response = client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "system", "content": "Você é um especialista em análise de conteúdo e síntese acadêmica. Responda em português do Brasil."}, {"role": "user", "content": prompt}], temperature=0.6)
         return response.choices[0].message.content
     except Exception as e:
         st.error(f"Erro na API da OpenAI: {e}"); return "Falha ao gerar a análise."
@@ -200,7 +201,7 @@ def compute_clusters(_embeddings, k):
 # FUNÇÃO PARA RENDERIZAR A PÁGINA 'CONSULTAS'
 # --------------------------------------------------------------------------
 def render_page_consultas(df, embeddings, matriz_similaridade, subject_options):
-    st.title("Consulta ao Acervo de Dissertações e Teses")
+    st.title("🔎 Consulta ao Acervo de Dissertações e Teses")
     st.markdown("Utilize os filtros abaixo para encontrar trabalhos ou selecione um item na tabela para ver detalhes e análises de similaridade.")
     
     if 'grid_key' not in st.session_state: st.session_state.grid_key = str(uuid.uuid4())
@@ -218,13 +219,13 @@ def render_page_consultas(df, embeddings, matriz_similaridade, subject_options):
     with search_col1:
         st.text_input("Busca simples por palavra-chave", key="search_term", placeholder="Filtre por autor, título, resumo...")
     with search_col2:
-        st.text_input("Busca semântica (com IA)", key="semantic_term", placeholder="Busque com palavras-chave ou frases.")
+        st.text_input("Busca semântica (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?")
 
     filter_col1, filter_col2 = st.columns([3, 1])
     with filter_col1:
         st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter", index=subject_options.index(st.session_state.get('subject_filter', subject_options[0])))
     with filter_col2:
-        st.button("Limpar Filtros", on_click=clear_searches, use_container_width=True, type="primary")
+        st.button("Limpar Filtros 🧹", on_click=clear_searches, use_container_width=True, type="primary")
     
     st.divider()
 
@@ -272,30 +273,49 @@ def render_page_consultas(df, embeddings, matriz_similaridade, subject_options):
         if not selected_rows.empty:
             id_selecionado = selected_rows.iloc[0]['index_original']
             num_vizinhos = st.slider("Número de trabalhos similares para exibir:", 1, 10, 5, 1, key=f"slider_{id_selecionado}")
+            
+            # --- LÓGICA DE DETECÇÃO DE MUDANÇA DE CONTEXTO ---
+            contexto_atual = (id_selecionado, num_vizinhos)
+            if contexto_atual != st.session_state.get('ultimo_contexto', None):
+                if 'analysis_result' in st.session_state:
+                    del st.session_state['analysis_result']
+                st.session_state['ultimo_contexto'] = contexto_atual
+
             fig, node_indices = generate_similarity_graph(df, matriz_similaridade, id_selecionado, num_vizinhos)
             st.plotly_chart(fig, use_container_width=True)
+            
             st.write("Documentos incluídos no grafo:")
             df_similares = df.loc[list(node_indices)][["Autor", "Título", "Ano"]].reset_index(drop=True)
             st.dataframe(df_similares, use_container_width=True, hide_index=True)
             st.divider()
+
             if st.button("Gerar Análise com IA 🧠", key=f"btn_analise_{id_selecionado}"):
                 cache_key = (id_selecionado, num_vizinhos)
-                if cache_key in st.session_state.analysis_cache: st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]; st.toast("Reexibindo análise previamente gerada. ⚡")
+                if cache_key in st.session_state.analysis_cache: 
+                    st.session_state.analysis_result = st.session_state.analysis_cache[cache_key]
+                    st.toast("Reexibindo análise previamente gerada. ⚡")
                 else:
                     summaries_to_analyze = df.loc[list(node_indices)]['Resumo_LLM'].dropna()
                     if not summaries_to_analyze.empty:
                         with st.spinner('A IA está lendo e preparando a análise...'):
-                            analysis = get_ai_synthesis("\n\n---\n\n".join(summaries_to_analyze)); st.session_state.analysis_result = analysis; st.session_state.analysis_cache[cache_key] = analysis
-                    else: st.session_state.analysis_result = "Não há resumos disponíveis para gerar a análise."
+                            analysis = get_ai_synthesis("\n\n---\n\n".join(summaries_to_analyze))
+                            st.session_state.analysis_result = analysis
+                            st.session_state.analysis_cache[cache_key] = analysis
+                    else: 
+                        st.session_state.analysis_result = "Não há resumos disponíveis para gerar a análise."
+            
             if 'analysis_result' in st.session_state and st.session_state.analysis_result:
-                with st.container(border=True): st.subheader("Análise Gerada por IA"); st.markdown(st.session_state.analysis_result)
-        else: st.info("Selecione um registro na tabela para visualizar trabalhos similares.")
+                with st.container(border=True): 
+                    st.subheader("Análise Gerada por IA")
+                    st.markdown(st.session_state.analysis_result)
+        else: 
+            st.info("Selecione um registro na tabela para visualizar trabalhos similares.")
 
 # --------------------------------------------------------------------------
 # FUNÇÃO PARA RENDERIZAR A PÁGINA 'DASHBOARD'
 # --------------------------------------------------------------------------
 def render_page_dashboard(df, embeddings):
-    st.title("Dashboard de Análise do Acervo")
+    st.title("📊 Dashboard de Análise do Acervo")
     st.markdown("---")
     st.subheader("Top 20 Assuntos Mais Frequentes")
     todos_assuntos = [assunto for sublista in df['Assuntos_Processados'] for assunto in sublista]
@@ -349,23 +369,19 @@ def render_page_sobre():
 def main():
     st.set_page_config(page_title="Acervo PPGDR", page_icon="📚", layout="wide")
 
-    # --- CSS ATUALIZADO ---
-    # Este CSS agora usa um seletor '*' para forçar a cor branca em TODO o texto da sidebar
     st.markdown("""
-    <style>
-        [data-testid="stSidebar"] {
-            background-color: #0F5EDD;
-        }
-        /* Estiliza o título na sidebar */
-        [data-testid="stSidebar"] h1 {
-            color: white;
-        }
-        /* Garante que o texto DENTRO dos botões tenha cor escura para ser legível */
-        [data-testid="stSidebar"] .stButton button {
-            color: #0F1116; 
-        }
-    </style>
-""", unsafe_allow_html=True)
+        <style>
+            [data-testid="stSidebar"] {
+                background-color: #0F5EDD;
+            }
+            [data-testid="stSidebar"] h1 {
+                color: white;
+            }
+            [data-testid="stSidebar"] .stButton button {
+                color: #0F1116; 
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
     df = load_data(CSV_DATA_PATH)
     embeddings = load_embeddings(EMBEDDINGS_PATH)
@@ -379,29 +395,22 @@ def main():
     matriz_similaridade = calculate_similarity_matrix(embeddings)
     subject_options = prepare_subject_list(df)
 
-    # --- NAVEGAÇÃO COM BOTÕES E SESSION STATE ---
-    # Inicializa o estado da página, definindo 'Consultas' como padrão
     if 'page' not in st.session_state:
         st.session_state.page = "Consultas"
 
     with st.sidebar:
         st.title("📚 Acervo PPGDR")
         
-        # Cada botão atualiza o st.session_state.page
         if st.button("Consultas", use_container_width=True):
             st.session_state.page = "Consultas"
-        
         if st.button("Dashboard", use_container_width=True):
             st.session_state.page = "Dashboard"
-
         if st.button("Sobre", use_container_width=True):
             st.session_state.page = "Sobre"
         
         st.divider()
         st.image("NET-01.png", use_container_width=True)
 
-    # --- ROTEAMENTO BASEADO NO SESSION STATE ---
-    # Renderiza a página de acordo com o valor em st.session_state.page
     if st.session_state.page == "Consultas":
         if 'search_term' not in st.session_state: st.session_state.search_term = ""
         if 'semantic_term' not in st.session_state: st.session_state.semantic_term = ""
