@@ -155,7 +155,7 @@ def compute_clusters(_embeddings, k):
 # FUNÇÃO PARA RENDERIZAR A PÁGINA 'CONSULTAS'
 # --------------------------------------------------------------------------
 def render_page_consultas(df, embeddings, matriz_similaridade, subject_options):
-    st.title("🔎 Consulta ao Acervo de Dissertações e Teses")
+    st.title("Consulta ao Acervo de Dissertações e Teses")
     st.markdown("Utilize os filtros abaixo para encontrar trabalhos ou selecione um item na tabela para ver detalhes e análises de similaridade.")
     
     if 'grid_key' not in st.session_state: st.session_state.grid_key = str(uuid.uuid4())
@@ -179,7 +179,7 @@ def render_page_consultas(df, embeddings, matriz_similaridade, subject_options):
     with filter_col1:
         st.selectbox("Filtro por Assunto", options=subject_options, key="subject_filter", index=subject_options.index(st.session_state.get('subject_filter', subject_options[0])))
     with filter_col2:
-        st.button("Limpar Filtros 🧹", on_click=clear_searches, use_container_width=True, type="primary")
+        st.button("Limpar Filtros", on_click=clear_searches, use_container_width=True, type="primary")
     
     st.divider()
 
@@ -250,7 +250,7 @@ def render_page_consultas(df, embeddings, matriz_similaridade, subject_options):
 # FUNÇÃO PARA RENDERIZAR A PÁGINA 'DASHBOARD'
 # --------------------------------------------------------------------------
 def render_page_dashboard(df, embeddings):
-    st.title("📊 Dashboard de Análise do Acervo")
+    st.title("Dashboard de Análise do Acervo")
     st.markdown("---")
     st.subheader("Top 20 Assuntos Mais Frequentes")
     todos_assuntos = [assunto for sublista in df['Assuntos_Processados'] for assunto in sublista]
