@@ -173,7 +173,7 @@ def render_page_consultas(df, embeddings, matriz_similaridade, subject_options):
     with search_col1:
         st.text_input("Busca simples por palavra-chave", key="search_term", placeholder="Filtre por autor, título, resumo...")
     with search_col2:
-        st.text_input("Busca semântica (com IA)", key="semantic_term", placeholder="Qual o tema do seu interesse?")
+        st.text_input("Busca semântica (com IA)", key="semantic_term", placeholder="Busque com palavras-chave ou frases.")
 
     filter_col1, filter_col2 = st.columns([3, 1])
     with filter_col1:
