@@ -101,7 +101,7 @@ def search_semantic(query_text: str, _document_embeddings: np.ndarray, model="te
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         query_embedding = client.embeddings.create(input=[query_text], model=model).data[0].embedding
         similarities = cosine_similarity([query_embedding], _document_embeddings).flatten()
-        return [i for i in np.argsort(-similarities) if similarities[i] > 0.8][:20]
+        return [i for i in np.argsort(-similarities) if similarities[i] > 0.2][:20]
     except Exception as e:
         st.error(f"Erro na busca inteligente: {e}"); return []
 
