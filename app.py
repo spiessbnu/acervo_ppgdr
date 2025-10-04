@@ -110,23 +110,49 @@ def get_ai_synthesis(summaries: str) -> str:
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
         prompt_template = """
-Você é um especialista em análise de conteúdo e síntese acadêmica.
-Sua missão é analisar o conjunto de resumos de trabalhos acadêmicos fornecido.
-Leia todos os textos e identifique as conexões, os padrões e os temas centrais que os unem.
-Crie uma análise unificada que revele o panorama geral das pesquisas apresentadas.
+Você é um(a) analista especializado(a) em revisão de literatura e síntese de evidências.
+Receberá um conjunto de resumos (abstracts) e deve produzir uma análise que preserve
+as especificidades de cada estudo e, ao mesmo tempo, construa uma visão unificada do campo.
 
-CONTEXTO (Resumos):
+INSTRUÇÕES (qualidade e segurança)
+- Escreva em português do Brasil, com tom técnico, claro e imparcial.
+- Não invente dados; se algo não constar no resumo, escreva “não informado”.
+- Evite jargão excessivo; explique termos técnicos apenas quando estritamente necessário.
+- Aponte sobreposições entre estudos e evite redundâncias.
+- Não exponha raciocínio passo a passo; entregue apenas as seções pedidas.
+
+ESCOPO ANALÍTICO MÍNIMO
+- Nível micro: para cada estudo, considere (quando disponível) questão de pesquisa,
+  enquadramento teórico/conceitual, método/dados e achados/limitações.
+- Nível macro: identifique padrões, convergências/divergências e lacunas plausíveis,
+  integrando os achados em uma narrativa coesa.
+
+FORMATO DE SAÍDA (estritamente nesta ordem; não use tabelas)
+
+Síntese analítica
+(2–3 parágrafos densos integrando o conjunto: panorama, fios condutores conceituais,
+escopo empírico, principais resultados e tensões metodológicas/teóricas. Não liste; sintetize.
+Ao citar achados específicos, identifique-os pelo conteúdo — tema, método, amostra — sem transcrever longos trechos.)
+
+Temas principais
+(- Liste 3–6 temas.
+ - Para cada tema: título do tema e 1–2 frases explicando por que é central no corpus.
+ - Em seguida, descreva a evidência típica/achados recorrentes em 1 frase, evitando redundâncias.)
+
+Convergências e Divergências
+(- Convergências: 2–5 enunciados curtos (uma frase cada) que expressem acordos recorrentes entre os estudos.
+ - Divergências/tensões: 2–5 enunciados curtos (uma frase cada) que indiquem contrastes teóricos, metodológicos ou empíricos.
+ - Quando apropriado, sinalize “não informado” ou “incerto” para evitar extrapolações.)
+
+ENTRADA
+CONJUNTO DE RESUMOS:
 ---
 {summaries}
 ---
 
-Sua resposta deve seguir rigorosamente o seguinte formato:
-
-**Síntese Analítica:**
-[Parágrafo denso e analítico que conecta as ideias principais dos textos.]
-
-**Temas Principais:**
-[Liste de 3 a 5 temas proeminentes em formato de lista com marcadores.]
+RESTRIÇÕES FINAIS
+- Parafraseie; não copie longos trechos dos resumos.
+- Não inclua nada além das três seções especificadas.
 """
 
         prompt = prompt_template.format(summaries=summaries)
