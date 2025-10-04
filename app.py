@@ -143,7 +143,7 @@ def get_ai_synthesis(summaries: str) -> str:
 
         Convergências e Divergências
         (- Convergências: 2–5 enunciados curtos (uma frase cada) que expressem acordos recorrentes entre os estudos.
-         - Divergências/tensões: 2–5 enunciados curtos (uma frase cada) que indiquem contrastes teóricos, metodológicos ou empíricos.
+         - Divergências: 2–3 enunciados curtos (uma frase cada) que indiquem contrastes teóricos, metodológicos ou empíricos (resultados).
          - Quando apropriado, sinalize “não informado” ou “incerto” para evitar extrapolações.)
 
         ENTRADA
