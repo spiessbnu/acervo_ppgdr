@@ -109,7 +109,26 @@ def get_ai_synthesis(summaries: str) -> str:
     """Chama a API da OpenAI para gerar uma síntese analítica."""
     try:
         client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
-        prompt_template = """Você é um especialista em análise de conteúdo e síntese acadêmica. Sua missão é analisar o conjunto de resumos de trabalhos acadêmicos fornecido. Leia todos os textos e identifique as conexões, os padrões e os temas centrais que os unem. Crie uma análise unificada que revele o panorama geral das pesquisas apresentadas. CONTEXTO (Resumos): --- {summaries} --- Sua resposta deve seguir rigorosamente o seguinte formato: **Síntese Analítica:** [Parágrafo denso e analítico que conecta as ideias principais dos textos.] **Temas Principais:** [Liste de 3 a 5 temas proeminentes em formato de lista com marcadores.]"""
+        prompt_template = """
+Você é um especialista em análise de conteúdo e síntese acadêmica.
+Sua missão é analisar o conjunto de resumos de trabalhos acadêmicos fornecido.
+Leia todos os textos e identifique as conexões, os padrões e os temas centrais que os unem.
+Crie uma análise unificada que revele o panorama geral das pesquisas apresentadas.
+
+CONTEXTO (Resumos):
+---
+{summaries}
+---
+
+Sua resposta deve seguir rigorosamente o seguinte formato:
+
+**Síntese Analítica:**
+[Parágrafo denso e analítico que conecta as ideias principais dos textos.]
+
+**Temas Principais:**
+[Liste de 3 a 5 temas proeminentes em formato de lista com marcadores.]
+"""
+
         prompt = prompt_template.format(summaries=summaries)
         response = client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "system", "content": "Você é um especialista em análise de conteúdo. Responda em português do Brasil."}, {"role": "user", "content": prompt}], temperature=0.6)
         return response.choices[0].message.content
