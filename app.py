@@ -137,7 +137,7 @@ def get_ai_synthesis(summaries: str) -> str:
         Ao citar achados específicos, identifique-os pelo conteúdo — tema, método, amostra — sem transcrever longos trechos.)
 
         Temas principais
-        (- Liste 3–6 temas.
+        (- Liste 3–5 temas.
          - Para cada tema: título do tema e 1–2 frases explicando por que é central no corpus.
          - Em seguida, descreva a evidência típica/achados recorrentes em 1 frase, evitando redundâncias.)
 
